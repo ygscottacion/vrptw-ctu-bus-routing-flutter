@@ -1,0 +1,28 @@
+name: myctubus_flutter
+description: MyCTU BUS - Ứng dụng xe buýt đưa đón sinh viên Trường Đại học Cần Thơ
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_map: ^7.0.0
+  latlong2: ^0.9.1
+  qr_flutter: ^4.1.0
+  overlay_support: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/bus_hero.png
+    - assets/images/co2_icon.png
