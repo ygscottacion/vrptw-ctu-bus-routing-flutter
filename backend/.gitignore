@@ -1,0 +1,19 @@
+# Environment Variables (CRITICAL: DO NOT COMMIT REAL SECRETS)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# Database / SQLite / Temp logs
+*.sqlite3
+*.log
