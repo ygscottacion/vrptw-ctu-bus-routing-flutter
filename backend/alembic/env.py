@@ -12,6 +12,9 @@ from app.core.database import Base
 
 # Import all models here so Alembic can detect them
 from app.models.user import User
+from app.models.location import Location
+from app.models.vehicle import Vehicle
+from app.models.route import Route, RouteStop
 
 config = context.config
 
