@@ -1,3 +1,11 @@
+# Environment & Secrets (CRITICAL: DO NOT COMMIT REAL SECRETS)
+.env
+*.env
+!.env.example
+backend/.env
+venv/
+__pycache__/
+
 # Miscellaneous
 *.class
 *.log
