@@ -8,12 +8,16 @@ from app.models.location import Location
 from app.models.vehicle import Vehicle
 from app.core.security import get_password_hash
 
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 def seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
     try:
-        print("🌱 Seeding Database...")
+        print("[INFO] Seeding Database...")
 
         # 1. Seed Users
         if not db.query(User).filter(User.username == "admin").first():
