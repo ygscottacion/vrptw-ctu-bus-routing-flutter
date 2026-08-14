@@ -2,6 +2,7 @@ from typing import List, Optional
 from datetime import date
 from sqlalchemy.orm import Session
 from app.models.route import Route, RouteStop, RouteStatus
+from datetime import datetime
 
 def create_route(db: Session, vehicle_id: int, route_date: date, total_distance: float, stops_data: List[dict]) -> Route:
     db_route = Route(
