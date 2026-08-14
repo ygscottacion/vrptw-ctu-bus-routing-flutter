@@ -35,10 +35,13 @@ class VRPTWSolverService:
             optimized_stops, total_cost = self.tabu_optimizer.optimize_cluster_route(
                 cluster["stops"], depot
             )
+            # Đánh giá lại lộ trình đã tối ưu để lấy ra quãng đường thực tế (km)
+            eval_res = self.tabu_optimizer.evaluate_route(optimized_stops, depot)
+
             final_routes.append({
                 "vehicle_id": cluster["vehicle_id"],
                 "total_demand": cluster["current_demand"],
-                "total_distance_km": round(total_cost, 2),
+                "total_distance_km": round(eval_res.distance, 2),
                 "ordered_stops": optimized_stops
             })
 
