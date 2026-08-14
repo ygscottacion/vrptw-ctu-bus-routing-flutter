@@ -29,6 +29,11 @@ def create_route(db: Session, vehicle_id: int, route_date: date, total_distance:
 def get_route_by_id(db: Session, route_id: int) -> Optional[Route]:
     return db.query(Route).filter(Route.id == route_id).first()
 
+def get_routes_by_ids(db: Session, route_ids: List[int]) -> List[Route]:
+    if not route_ids:
+        return []
+    return db.query(Route).filter(Route.id.in_(route_ids)).all()
+
 def get_routes_by_driver(db: Session, driver_id: int) -> List[Route]:
     from app.models.vehicle import Vehicle
     return db.query(Route).join(Vehicle, Route.vehicle_id == Vehicle.id).filter(Vehicle.driver_id == driver_id).all()

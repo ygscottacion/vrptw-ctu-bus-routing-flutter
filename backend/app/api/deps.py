@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.crud import crud_user
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.user import TokenPayload
 
 oauth2_scheme = OAuth2PasswordBearer(
@@ -41,3 +41,31 @@ def get_current_user(
             detail="User not found"
         )
     return user
+
+def get_current_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Ensure the authenticated user has the ADMIN role.
+    Used to protect management endpoints (locations, vehicles, route generation).
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user doesn't have enough privileges (admin required)",
+        )
+    return current_user
+
+def get_current_driver(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Ensure the authenticated user is either a DRIVER or an ADMIN.
+    Used to protect driver-facing endpoints (e.g. viewing assigned routes).
+    """
+    if current_user.role not in (UserRole.DRIVER, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user doesn't have enough privileges (driver or admin required)",
+        )
+    return current_user

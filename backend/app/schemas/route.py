@@ -2,6 +2,7 @@ from typing import List, Optional
 from datetime import date, datetime
 from pydantic import BaseModel
 from app.models.route import RouteStatus
+from app.services.job_store import JobStatus
 
 class RouteStopResponse(BaseModel):
     id: int
@@ -26,3 +27,21 @@ class RouteResponse(BaseModel):
 class RouteGenerateRequest(BaseModel):
     date: date
     depot_location_id: int
+
+class RouteGenerationAcceptedResponse(BaseModel):
+    """Phản hồi tức thì khi job sinh lộ trình được nhận và chạy nền (202 Accepted)."""
+    job_id: str
+    status: JobStatus
+    message: str
+
+class RouteGenerationJobStatusResponse(BaseModel):
+    """Dùng để Flutter poll tiến trình/kết quả của job sinh lộ trình."""
+    job_id: str
+    status: JobStatus
+    created_at: datetime
+    updated_at: datetime
+    error_message: Optional[str] = None
+    routes: List[RouteResponse] = []
+
+    class Config:
+        from_attributes = True
