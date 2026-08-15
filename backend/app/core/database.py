@@ -1,7 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
-from app.models.route import Route, RouteStop
 
 SQLALCHEMY_DATABASE_URL = settings.assemble_db_connection()
 

@@ -161,6 +161,9 @@ class TabuSearchOptimizer:
                 for j in range(i + 2, n):
                     candidate_moves.append(TwoOptMove(i, j))
 
+            if len(candidate_moves) > 60:
+                candidate_moves = random.sample(candidate_moves, 60)
+
             # 3. Đánh giá tất cả các nước đi trong không gian lân cận
             for move in candidate_moves:
                 neighbor_solution = move.apply(current_solution)

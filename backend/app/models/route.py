@@ -31,3 +31,5 @@ class RouteStop(Base):
 
     # Relationships
     route = relationship("Route", back_populates="stops")
+    location = relationship("Location")
+

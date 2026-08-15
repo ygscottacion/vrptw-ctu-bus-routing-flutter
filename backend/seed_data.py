@@ -54,10 +54,15 @@ def seed():
             loc3 = Location(name="Trạm 3 - Công viên Sông Hậu", latitude=10.0461, longitude=105.7891, demand=6)
             loc4 = Location(name="Trạm 4 - Siêu thị Lotte Mart", latitude=10.0402, longitude=105.7621, demand=10)
             loc5 = Location(name="Trạm 5 - Bệnh viện ĐKTW Cần Thơ", latitude=10.0215, longitude=105.7531, demand=7)
+            loc6 = Location(name="Trạm 6 - Chợ Đêm Trần Phú", latitude=10.0435, longitude=105.7820, demand=4)
+            loc7 = Location(name="Trạm 7 - Siêu thị GO! Cần Thơ", latitude=10.0156, longitude=105.7645, demand=9)
+            loc8 = Location(name="Trạm 8 - Bến Xe Trung Tâm Cần Thơ", latitude=10.0078, longitude=105.7721, demand=12)
+            loc9 = Location(name="Trạm 9 - ĐH Y Dược Cần Thơ", latitude=10.0265, longitude=105.7580, demand=6)
+            loc10 = Location(name="Trạm 10 - Công viên Cầu Cần Thơ", latitude=10.0102, longitude=105.7950, demand=5)
 
-            db.add_all([depot, loc1, loc2, loc3, loc4, loc5])
+            db.add_all([depot, loc1, loc2, loc3, loc4, loc5, loc6, loc7, loc8, loc9, loc10])
             db.commit()
-            print("✅ Locations seeded (CTU Depot + 5 Bus Stops)")
+            print("✅ Locations seeded (CTU Depot + 10 Bus Stops)")
 
         # 3. Seed Vehicles
         if not db.query(Vehicle).first():

@@ -4,11 +4,14 @@ from pydantic import BaseModel
 from app.models.route import RouteStatus
 from app.services.job_store import JobStatus
 
+from app.schemas.location import LocationResponse
+
 class RouteStopResponse(BaseModel):
     id: int
     location_id: int
     stop_order: int
     arrival_time: Optional[datetime] = None
+    location: Optional[LocationResponse] = None
 
     class Config:
         from_attributes = True
