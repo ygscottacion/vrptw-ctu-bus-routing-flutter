@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.crud import crud_location
+from app.models.user import User
 from app.schemas.location import LocationCreate, LocationUpdate, LocationResponse
 
 router = APIRouter()
@@ -11,11 +12,12 @@ router = APIRouter()
 @router.get("/", response_model=List[LocationResponse])
 def read_locations(
     db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user),
     skip: int = 0,
     limit: int = 100
 ) -> Any:
     """
-    Retrieve all bus stops / locations.
+    Retrieve all bus stops / locations. Requires an authenticated user.
     """
     locations = crud_location.get_locations(db, skip=skip, limit=limit)
     return locations
@@ -23,20 +25,23 @@ def read_locations(
 @router.post("/", response_model=LocationResponse, status_code=status.HTTP_201_CREATED)
 def create_location(
     location_in: LocationCreate,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db),
+    current_admin: User = Depends(deps.get_current_admin)
 ) -> Any:
     """
     Create a new bus stop / location with time window and demand parameters.
+    Admin only.
     """
     return crud_location.create_location(db=db, location_in=location_in)
 
 @router.get("/{location_id}", response_model=LocationResponse)
 def read_location(
     location_id: int,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db),
+    current_user: User = Depends(deps.get_current_user)
 ) -> Any:
     """
-    Get location details by ID.
+    Get location details by ID. Requires an authenticated user.
     """
     location = crud_location.get_location(db=db, location_id=location_id)
     if not location:
@@ -47,10 +52,11 @@ def read_location(
 def update_location(
     location_id: int,
     location_in: LocationUpdate,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db),
+    current_admin: User = Depends(deps.get_current_admin)
 ) -> Any:
     """
-    Update location information.
+    Update location information. Admin only.
     """
     location = crud_location.get_location(db=db, location_id=location_id)
     if not location:
@@ -60,10 +66,11 @@ def update_location(
 @router.delete("/{location_id}", response_model=LocationResponse)
 def delete_location(
     location_id: int,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db),
+    current_admin: User = Depends(deps.get_current_admin)
 ) -> Any:
     """
-    Delete a location by ID.
+    Delete a location by ID. Admin only.
     """
     location = crud_location.get_location(db=db, location_id=location_id)
     if not location:
