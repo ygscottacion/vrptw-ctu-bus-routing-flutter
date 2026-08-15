@@ -1,8 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../theme/app_theme.dart';
+import '../services/api_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -17,16 +18,18 @@ class _MapScreenState extends State<MapScreen> {
   double _busLat = 10.0300;
   double _busDir = 0.0002;
   Timer? _busTimer;
+  final ApiService _apiService = ApiService();
+  List<_BusStop> _dynamicStops = [];
 
   static const _busStops = [
-    _BusStop(LatLng(10.0300, 105.7683), 'Trường ĐH Cần Thơ', 'start', [1, 2, 3]),
-    _BusStop(LatLng(10.0320, 105.7760), 'Cổng phụ ĐH Cần Thơ', 'mid', [1, 2]),
-    _BusStop(LatLng(10.0370, 105.7850), 'Ngã tư Cần Thơ', 'mid', [1, 2, 3]),
-    _BusStop(LatLng(10.0400, 105.7900), 'Vincom Xuân Khánh', 'highlight', [1]),
-    _BusStop(LatLng(10.0430, 105.7930), 'Bến Ninh Kiều', 'mid', [1, 3]),
-    _BusStop(LatLng(10.0460, 105.7960), 'Vincom Hùng Vương', 'highlight', [2, 3]),
-    _BusStop(LatLng(10.0500, 105.7920), 'Bến xe Cần Thơ', 'end', [2]),
-    _BusStop(LatLng(10.0480, 105.7870), 'Chợ Tây Đô', 'mid', [3]),
+    _BusStop(LatLng(10.0299, 105.7684), 'Depot - ĐH Cần Thơ (Khu II)', 'start', [1, 2, 3]),
+    _BusStop(LatLng(10.0342, 105.7876), 'Trạm 1 - Bến Ninh Kiều', 'mid', [1, 2]),
+    _BusStop(LatLng(10.0031, 105.7482), 'Trạm 2 - Chợ Cái Răng', 'mid', [1, 2, 3]),
+    _BusStop(LatLng(10.0461, 105.7891), 'Trạm 3 - Công viên Sông Hậu', 'highlight', [1]),
+    _BusStop(LatLng(10.0402, 105.7621), 'Trạm 4 - Siêu thị Lotte Mart', 'mid', [1, 3]),
+    _BusStop(LatLng(10.0215, 105.7531), 'Trạm 5 - Bệnh viện ĐKTW Cần Thơ', 'highlight', [2, 3]),
+    _BusStop(LatLng(10.0435, 105.7820), 'Trạm 6 - Chợ Đêm Trần Phú', 'end', [2]),
+    _BusStop(LatLng(10.0156, 105.7645), 'Trạm 7 - Siêu thị GO! Cần Thơ', 'mid', [3]),
   ];
 
   static const _routeInfo = [
@@ -40,6 +43,9 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _loadBackendLocations();
+    });
     _busTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
       if (!mounted) return;
       setState(() {
@@ -49,6 +55,30 @@ class _MapScreenState extends State<MapScreen> {
         _busPos = LatLng(_busLat, 105.7801 + (_busLat - 10.0300) * 0.5);
       });
     });
+  }
+
+  Future<void> _loadBackendLocations() async {
+    try {
+      final data = await _apiService.fetchLocations();
+      if (data.isNotEmpty && mounted) {
+        setState(() {
+          _dynamicStops = data.map((item) {
+            final lat = (item['latitude'] as num).toDouble();
+            final lng = (item['longitude'] as num).toDouble();
+            final name = item['name'] as String;
+            final isDepot = name.toLowerCase().contains('depot');
+            return _BusStop(
+              LatLng(lat, lng),
+              name,
+              isDepot ? 'start' : 'mid',
+              [1, 2, 3],
+            );
+          }).toList();
+        });
+      }
+    } catch (_) {
+      // Dùng danh sách mặc định nếu chưa lấy được dữ liệu từ Backend
+    }
   }
 
   @override
@@ -70,14 +100,18 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  List<_BusStop> get _effectiveStops {
+    return _dynamicStops.isNotEmpty ? _dynamicStops : _busStops;
+  }
+
   List<_BusStop> get _visibleStops {
-    if (_selectedRoute == 'all') return _busStops;
+    if (_selectedRoute == 'all') return _effectiveStops;
     final n = int.parse(_selectedRoute);
-    return _busStops.where((s) => s.routes.contains(n)).toList();
+    return _effectiveStops.where((s) => s.routes.contains(n)).toList();
   }
 
   List<LatLng> _getRouteCoords(int routeNum) {
-    return _busStops
+    return _effectiveStops
         .where((s) => s.routes.contains(routeNum))
         .map((s) => s.pos)
         .toList();

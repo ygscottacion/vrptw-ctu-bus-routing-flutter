@@ -12,12 +12,11 @@ router = APIRouter()
 @router.get("/", response_model=List[LocationResponse])
 def read_locations(
     db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user),
     skip: int = 0,
     limit: int = 100
 ) -> Any:
     """
-    Retrieve all bus stops / locations. Requires an authenticated user.
+    Retrieve all bus stops / locations. Public endpoint.
     """
     locations = crud_location.get_locations(db, skip=skip, limit=limit)
     return locations
@@ -37,11 +36,10 @@ def create_location(
 @router.get("/{location_id}", response_model=LocationResponse)
 def read_location(
     location_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    db: Session = Depends(deps.get_db)
 ) -> Any:
     """
-    Get location details by ID. Requires an authenticated user.
+    Get location details by ID. Public endpoint.
     """
     location = crud_location.get_location(db=db, location_id=location_id)
     if not location:

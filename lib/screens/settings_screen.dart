@@ -1,6 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:overlay_support/overlay_support.dart';
 import '../theme/app_theme.dart';
+import '../services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,56 +15,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _promoNotif = true;
   bool _delayAlert = true;
 
+  final ApiService _apiService = ApiService();
+  Map<String, dynamic>? _currentUser;
+  bool _isLoggingIn = false;
+
   @override
   Widget build(BuildContext context) {
+    final isLoggedIn = _currentUser != null;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Cài đặt')),
+      appBar: AppBar(
+        title: const Text('Cài đặt & Tài khoản'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
         child: Column(
           children: [
-            _buildProfile(),
+            _buildProfileCard(isLoggedIn),
             _buildGroup('TÀI KHOẢN', [
               _SettingItem(
-                  icon: '👤',
-                  label: 'Thông tin cá nhân',
-                  color: AppColors.teal,
-                  onTap: () => _toast('Tính năng đang phát triển')),
+                icon: '👤',
+                label: isLoggedIn ? 'Thông tin cá nhân' : 'Đăng nhập vào hệ thống',
+                color: AppColors.teal,
+                onTap: isLoggedIn
+                    ? () => _toast('Đã đăng nhập tài khoản: ${_currentUser!['username']}')
+                    : () => _showLoginDialog(context),
+              ),
               _SettingItem(
-                  icon: '💳',
-                  label: 'Phương thức thanh toán',
-                  color: AppColors.purple,
-                  onTap: () => _toast('Tính năng đang phát triển')),
+                icon: '💳',
+                label: 'Phương thức thanh toán',
+                color: AppColors.purple,
+                onTap: () => _toast('Tính năng đang phát triển'),
+              ),
               _SettingItem(
-                  icon: '📋',
-                  label: 'Lịch sử đi xe',
-                  color: AppColors.orange,
-                  onTap: () => _toast('Tính năng đang phát triển')),
+                icon: '📋',
+                label: 'Lịch sử đi xe',
+                color: AppColors.orange,
+                onTap: () => _toast('Tính năng đang phát triển'),
+              ),
             ]),
             _buildNotifGroup(),
             _buildGroup('ỨNG DỤNG', [
               _SettingItem(
-                  icon: '🌐',
-                  label: 'Ngôn ngữ',
-                  color: AppColors.teal,
-                  trailing: 'Tiếng Việt',
-                  onTap: () {}),
+                icon: '🌐',
+                label: 'Ngôn ngữ',
+                color: AppColors.teal,
+                trailing: 'Tiếng Việt',
+                onTap: () {},
+              ),
               _SettingItem(
-                  icon: 'ℹ️',
-                  label: 'Về ứng dụng',
-                  color: AppColors.green,
-                  onTap: () => _showAboutModal(context)),
+                icon: 'ℹ️',
+                label: 'Về ứng dụng',
+                color: AppColors.green,
+                onTap: () => _showAboutModal(context),
+              ),
             ]),
             const SizedBox(height: AppSpacing.lg),
-            _buildLogoutBtn(context),
+            if (isLoggedIn) _buildLogoutBtn(context) else _buildLoginBtn(context),
           ],
         ),
       ),
     );
   }
 
-  // ─── PROFILE ──────────────────────────────────────────────
-  Widget _buildProfile() {
+  // ─── PROFILE CARD ──────────────────────────────────────────
+  Widget _buildProfileCard(bool isLoggedIn) {
     return Container(
       margin: const EdgeInsets.all(AppSpacing.lg),
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -72,9 +88,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          )
         ],
       ),
       child: Column(
@@ -82,42 +99,286 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Container(
             width: 80,
             height: 80,
-            decoration: const BoxDecoration(
-                color: AppColors.purpleBg, shape: BoxShape.circle),
-            child: const Center(
-                child: Text('👤', style: TextStyle(fontSize: 40))),
+            decoration: BoxDecoration(
+              color: isLoggedIn ? AppColors.tealBg : AppColors.purpleBg,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                isLoggedIn ? ( _currentUser!['role'] == 'admin' ? '👑' : '🚌') : '👤',
+                style: const TextStyle(fontSize: 40),
+              ),
+            ),
           ),
           const SizedBox(height: AppSpacing.sm),
-          const Text('Nguyễn Văn An',
-              style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary)),
-          const SizedBox(height: 2),
-          const Text('MSSV: B2100001',
-              style: TextStyle(
-                  fontSize: 13, color: AppColors.textSecondary)),
-          const SizedBox(height: 2),
-          const Text('an.nguyenvan@ctu.edu.vn',
-              style: TextStyle(
-                  fontSize: 12, color: AppColors.textMuted)),
-          const SizedBox(height: AppSpacing.md),
-          GestureDetector(
-            onTap: () => _toast('Tính năng đang phát triển'),
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.md, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.tealBg,
-                borderRadius: BorderRadius.circular(AppRadius.full),
-                border: Border.all(color: AppColors.teal),
-              ),
-              child: const Text('Đổi ảnh',
-                  style: TextStyle(
-                      color: AppColors.teal,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600)),
+          Text(
+            isLoggedIn
+                ? (_currentUser!['full_name'] ?? _currentUser!['username'])
+                : 'Chưa đăng nhập',
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
             ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            isLoggedIn
+                ? 'Vai trò: ${_currentUser!['role'].toString().toUpperCase()}'
+                : 'Nhấn Đăng nhập để sử dụng đầy đủ tính năng',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: isLoggedIn ? FontWeight.w600 : FontWeight.normal,
+              color: isLoggedIn ? AppColors.teal : AppColors.textSecondary,
+            ),
+          ),
+          if (isLoggedIn && _currentUser!['phone'] != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'SĐT: ${_currentUser!['phone']}',
+              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ─── LOGIN DIALOG ───────────────────────────────────────────
+  void _showLoginDialog(BuildContext context) {
+    final usernameController = TextEditingController(text: 'admin');
+    final passwordController = TextEditingController(text: 'admin123');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: AppSpacing.lg,
+            right: AppSpacing.lg,
+            top: AppSpacing.lg,
+            bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                  ),
+                ),
+              ),
+              const Center(
+                child: Text(
+                  '🔑 Đăng nhập Hệ Thống Backend',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              const Text('Tài khoản test nhanh:'),
+              const Text('• Admin: admin / admin123\n• Driver: driver1 / driver123',
+                  style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Tên đăng nhập (Username)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.person),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Mật khẩu (Password)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.lock),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isLoggingIn
+                      ? null
+                      : () async {
+                          setModalState(() => _isLoggingIn = true);
+                          final username = usernameController.text.trim();
+                          final password = passwordController.text.trim();
+
+                          final res = await _apiService.login(username, password);
+                          setModalState(() => _isLoggingIn = false);
+
+                          if (res['success'] == true) {
+                            Navigator.pop(ctx);
+                            setState(() {
+                              _currentUser = {
+                                'username': username,
+                                'full_name': username == 'admin' ? 'Quản trị viên CTU' : 'Tài xế Nguyễn Văn A',
+                                'role': username == 'admin' ? 'admin' : 'driver',
+                                'phone': '0901234567',
+                              };
+                            });
+                            _toast('✅ Đăng nhập thành công! Role: ${username == 'admin' ? 'ADMIN' : 'DRIVER'}');
+                          } else {
+                            _toast('❌ ${res['message']}');
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.teal,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                  ),
+                  child: _isLoggingIn
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('ĐĂNG NHẬP', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── LOGIN BUTTON FOR UNAUTHENTICATED ─────────────────────
+  Widget _buildLoginBtn(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => _showLoginDialog(context),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.teal,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+          ),
+          icon: const Text('🔑', style: TextStyle(fontSize: 18)),
+          label: const Text(
+            'Đăng nhập tài khoản',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── LOGOUT BUTTON FOR AUTHENTICATED ──────────────────────
+  Widget _buildLogoutBtn(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => _showLogoutConfirm(context),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.red,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+          ),
+          icon: const Text('🚪', style: TextStyle(fontSize: 18)),
+          label: const Text(
+            'Đăng xuất',
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showLogoutConfirm(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.md),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Text('🚪', style: TextStyle(fontSize: 44)),
+            SizedBox(height: AppSpacing.sm),
+            Text(
+              'Đăng xuất?',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            SizedBox(height: AppSpacing.sm),
+            Text(
+              'Bạn có chắc chắn muốn đăng xuất khỏi hệ thống không?',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+          ],
+        ),
+        actions: [
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.border),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                  ),
+                  child: const Text('Hủy', style: TextStyle(color: AppColors.textSecondary)),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _currentUser = null;
+                    });
+                    _toast('👋 Đã đăng xuất khỏi tài khoản!');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.red,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                  ),
+                  child: const Text('Đăng xuất'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -128,16 +389,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildGroup(String title, List<_SettingItem> items) {
     return Container(
       margin: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          )
         ],
       ),
       child: Column(
@@ -167,16 +429,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildNotifGroup() {
     return Container(
       margin: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(AppRadius.md),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          )
         ],
       ),
       child: Column(
@@ -273,96 +536,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ─── LOGOUT ───────────────────────────────────────────────
-  Widget _buildLogoutBtn(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => _showLogoutConfirm(context),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.red,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.md)),
-          ),
-          icon: const Text('🚪', style: TextStyle(fontSize: 18)),
-          label: const Text('Đăng xuất',
-              style:
-                  TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-        ),
-      ),
-    );
-  }
-
-  void _showLogoutConfirm(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Text('🚪', style: TextStyle(fontSize: 44)),
-            SizedBox(height: AppSpacing.sm),
-            Text('Đăng xuất?',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            SizedBox(height: AppSpacing.sm),
-            Text('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản không?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13, color: AppColors.textSecondary)),
-          ],
-        ),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.border),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.sm),
-                  ),
-                  child: const Text('Hủy',
-                      style: TextStyle(color: AppColors.textSecondary)),
-                ),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _toast('Đã đăng xuất thành công');
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.red,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.sm)),
-                    padding: const EdgeInsets.symmetric(
-                        vertical: AppSpacing.sm),
-                  ),
-                  child: const Text('Đăng xuất'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── ABOUT MODAL ──────────────────────────────────────────
   void _showAboutModal(BuildContext context) {
     showModalBottomSheet(
       context: context,

@@ -12,12 +12,11 @@ router = APIRouter()
 @router.get("/", response_model=List[VehicleResponse])
 def read_vehicles(
     db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user),
     skip: int = 0,
     limit: int = 100
 ) -> Any:
     """
-    Retrieve all bus vehicles. Requires an authenticated user.
+    Retrieve all bus vehicles. Public endpoint.
     """
     return crud_vehicle.get_vehicles(db, skip=skip, limit=limit)
 
@@ -35,11 +34,10 @@ def create_vehicle(
 @router.get("/{vehicle_id}", response_model=VehicleResponse)
 def read_vehicle(
     vehicle_id: int,
-    db: Session = Depends(deps.get_db),
-    current_user: User = Depends(deps.get_current_user)
+    db: Session = Depends(deps.get_db)
 ) -> Any:
     """
-    Get vehicle details by ID. Requires an authenticated user.
+    Get vehicle details by ID. Public endpoint.
     """
     vehicle = crud_vehicle.get_vehicle(db=db, vehicle_id=vehicle_id)
     if not vehicle:

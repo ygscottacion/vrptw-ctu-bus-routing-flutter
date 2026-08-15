@@ -69,3 +69,17 @@ def get_current_driver(
             detail="The user doesn't have enough privileges (driver or admin required)",
         )
     return current_user
+
+def get_current_student(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """
+    Ensure the authenticated user is a PASSENGER/STUDENT or ADMIN.
+    Used to protect student-facing endpoints (e.g. booking tickets).
+    """
+    if current_user.role not in (UserRole.PASSENGER, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user doesn't have enough privileges (student or admin required)",
+        )
+    return current_user

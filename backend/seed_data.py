@@ -6,6 +6,9 @@ from app.core.database import SessionLocal, engine, Base
 from app.models.user import User, UserRole
 from app.models.location import Location
 from app.models.vehicle import Vehicle
+from app.models.route import Route, RouteStop
+from app.models.ticket import Ticket
+from app.models.incident import Incident
 from app.core.security import get_password_hash
 
 import sys
@@ -42,9 +45,16 @@ def seed():
                 full_name="Tài xế Trần Văn B",
                 phone="0918654321"
             )
-            db.add_all([admin, driver1, driver2])
+            student1 = User(
+                username="student1",
+                password_hash=get_password_hash("student123"),
+                role=UserRole.PASSENGER,
+                full_name="Sinh viên Lê Văn C",
+                phone="0939123456"
+            )
+            db.add_all([admin, driver1, driver2, student1])
             db.commit()
-            print("✅ Users seeded: admin (pass: admin123), driver1, driver2 (pass: driver123)")
+            print("✅ Users seeded: admin (pass: admin123), driver1, driver2 (pass: driver123), student1 (pass: student123)")
 
         # 2. Seed Depot & Locations (Can Tho Coordinates)
         if not db.query(Location).first():
