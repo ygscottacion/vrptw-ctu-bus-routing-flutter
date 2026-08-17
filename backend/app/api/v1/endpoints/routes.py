@@ -7,6 +7,7 @@ from app.api import deps
 from app.core.database import SessionLocal
 from app.crud import crud_route
 from app.models.location import Location
+from app.models.route import RouteStatus
 from app.models.user import User, UserRole
 from app.models.vehicle import Vehicle
 from app.schemas.route import (
@@ -171,6 +172,44 @@ def get_route_details(
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
     return route
+
+
+def _ensure_route_driver(route, current_driver: User) -> None:
+    """A driver can only change the route assigned to their own vehicle."""
+    if current_driver.role == UserRole.ADMIN:
+        return
+    if not route.vehicle_id or not route.vehicle or route.vehicle.driver_id != current_driver.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Route is not assigned to this driver")
+
+
+@router.patch("/{route_id}/start", response_model=RouteResponse)
+def start_route(
+    route_id: int,
+    db: Session = Depends(deps.get_db),
+    current_driver: User = Depends(deps.get_current_driver),
+) -> Any:
+    route = crud_route.get_route_by_id(db, route_id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    _ensure_route_driver(route, current_driver)
+    if route.status == RouteStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="Completed route cannot be started")
+    return crud_route.update_route_status(db, route, RouteStatus.IN_PROGRESS)
+
+
+@router.patch("/{route_id}/end", response_model=RouteResponse)
+def end_route(
+    route_id: int,
+    db: Session = Depends(deps.get_db),
+    current_driver: User = Depends(deps.get_current_driver),
+) -> Any:
+    route = crud_route.get_route_by_id(db, route_id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    _ensure_route_driver(route, current_driver)
+    if route.status != RouteStatus.IN_PROGRESS:
+        raise HTTPException(status_code=409, detail="Only an in-progress route can be completed")
+    return crud_route.update_route_status(db, route, RouteStatus.COMPLETED)
 
 @router.get("/driver/{driver_id}", response_model=List[RouteResponse])
 def get_driver_routes(

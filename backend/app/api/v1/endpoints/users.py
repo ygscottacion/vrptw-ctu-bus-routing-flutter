@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.crud import crud_user
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse, UserRoleUpdate
 
 router = APIRouter()
 
@@ -53,6 +53,25 @@ def read_user_by_id(
     user = crud_user.get_user_by_id(db, user_id=user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+@router.put("/{user_id}/role", response_model=UserResponse)
+def update_user_role(
+    user_id: int,
+    role_in: UserRoleUpdate,
+    db: Session = Depends(deps.get_db),
+    current_admin: User = Depends(deps.get_current_admin)
+) -> Any:
+    """
+    Update user role. Admin only.
+    """
+    user = crud_user.get_user_by_id(db, user_id=user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.role = role_in.role
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user
 
 @router.delete("/{user_id}", response_model=UserResponse)

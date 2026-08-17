@@ -37,3 +37,12 @@ def get_routes_by_ids(db: Session, route_ids: List[int]) -> List[Route]:
 def get_routes_by_driver(db: Session, driver_id: int) -> List[Route]:
     from app.models.vehicle import Vehicle
     return db.query(Route).join(Vehicle, Route.vehicle_id == Vehicle.id).filter(Vehicle.driver_id == driver_id).all()
+
+
+def update_route_status(db: Session, route: Route, status: RouteStatus) -> Route:
+    """Persist a driver transition for a route that was already assigned."""
+    route.status = status
+    db.add(route)
+    db.commit()
+    db.refresh(route)
+    return route

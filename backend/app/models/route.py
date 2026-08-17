@@ -18,6 +18,7 @@ class Route(Base):
     total_distance = Column(Float, default=0.0)
 
     # Relationships
+    vehicle = relationship("Vehicle")
     stops = relationship("RouteStop", back_populates="route", cascade="all, delete-orphan")
 
 class RouteStop(Base):
@@ -32,4 +33,3 @@ class RouteStop(Base):
     # Relationships
     route = relationship("Route", back_populates="stops")
     location = relationship("Location")
-

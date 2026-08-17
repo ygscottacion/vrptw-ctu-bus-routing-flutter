@@ -1,10 +1,11 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
 class TicketScreen extends StatefulWidget {
-  const TicketScreen({super.key});
+  const TicketScreen({super.key, required this.api});
+  final ApiService api;
 
   @override
   State<TicketScreen> createState() => _TicketScreenState();
@@ -28,17 +29,35 @@ class _TicketScreenState extends State<TicketScreen>
     _TicketType('month', 'Vé tháng', 0, 150000),
   ];
 
-  static final _myTickets = [
-    _MyTicket('BUS2024001', 'CTU → Vincom Xuân Khánh', 'Sinh viên',
-        '30/06/2026', 18, true, AppColors.teal, 'BUS2024001-CTU-VINCOM'),
-    _MyTicket('BUS2023088', 'CTU → Bến xe Cần Thơ', 'Sinh viên',
-        '31/12/2025', 0, false, AppColors.purple, 'BUS2023088-CTU-BENXE'),
-  ];
+  List<_MyTicket> _myTickets = [];
+  bool _loadingTickets = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadTickets();
+  }
+
+  Future<void> _loadTickets() async {
+    try {
+      final items = await widget.api.fetchMyTickets();
+      if (!mounted) return;
+      setState(() => _myTickets = items.map((item) {
+        final ticket = item as Map<String, dynamic>;
+        final active = ticket['status'] == 'active';
+        return _MyTicket(
+          'BUS${ticket['id']}', 'Tuyến #${ticket['route_id'] ?? 'Chưa chọn'}',
+          'Vé điện tử', ticket['created_at']?.toString().split('T').first ?? '—',
+          active ? 1 : 0, active, active ? AppColors.teal : AppColors.purple,
+          ticket['qr_code']?.toString() ?? '',
+        );
+      }).toList());
+    } catch (_) {
+      // Người dùng chưa đăng nhập hoặc backend chưa sẵn sàng: giữ danh sách trống.
+    } finally {
+      if (mounted) setState(() => _loadingTickets = false);
+    }
   }
 
   @override
@@ -89,6 +108,8 @@ class _TicketScreenState extends State<TicketScreen>
 
   // ─── MY TICKETS ───────────────────────────────────────────
   Widget _buildMyTickets() {
+    if (_loadingTickets) return const Center(child: CircularProgressIndicator());
+    if (_myTickets.isEmpty) return const Center(child: Text('Bạn chưa có vé nào.'));
     return ListView.builder(
       padding: const EdgeInsets.all(AppSpacing.lg),
       itemCount: _myTickets.length,
@@ -453,11 +474,18 @@ class _TicketScreenState extends State<TicketScreen>
     );
   }
 
-  void _handleBuyTicket() {
+  Future<void> _handleBuyTicket() async {
     final route = _routes.firstWhere((r) => r.id == _selectedRoute);
-    final ticketNum =
-        (100 + Random().nextInt(900)).toString().padLeft(3, '0');
     final routeLabel = route.label.split(': ').last;
+    Map<String, dynamic> ticket;
+    try {
+      ticket = await widget.api.bookTicket(int.parse(_selectedRoute));
+      await _loadTickets();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể mua vé: $e')));
+      return;
+    }
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.white,
@@ -500,7 +528,7 @@ class _TicketScreenState extends State<TicketScreen>
                   borderRadius: BorderRadius.circular(AppRadius.sm)),
               child: Column(
                 children: [
-                  Text('#BUS2024$ticketNum',
+                  Text('#BUS${ticket['id']}',
                       style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,

@@ -4,7 +4,9 @@ import '../theme/app_theme.dart';
 import '../services/api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, required this.apiService, required this.onLoggedIn});
+  final ApiService apiService;
+  final ValueChanged<Map<String, dynamic>> onLoggedIn;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -15,9 +17,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _promoNotif = true;
   bool _delayAlert = true;
 
-  final ApiService _apiService = ApiService();
+  late final ApiService _apiService;
   Map<String, dynamic>? _currentUser;
   bool _isLoggingIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiService = widget.apiService;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -228,15 +236,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                           if (res['success'] == true) {
                             Navigator.pop(ctx);
-                            setState(() {
-                              _currentUser = {
-                                'username': username,
-                                'full_name': username == 'admin' ? 'Quản trị viên CTU' : 'Tài xế Nguyễn Văn A',
-                                'role': username == 'admin' ? 'admin' : 'driver',
-                                'phone': '0901234567',
-                              };
-                            });
-                            _toast('✅ Đăng nhập thành công! Role: ${username == 'admin' ? 'ADMIN' : 'DRIVER'}');
+                            final user = res['user'] as Map<String, dynamic>;
+                            setState(() => _currentUser = user);
+                            widget.onLoggedIn(user);
+                            _toast('✅ Đăng nhập thành công! Role: ${user['role'].toString().toUpperCase()}');
                           } else {
                             _toast('❌ ${res['message']}');
                           }
