@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
+from app.core.database import Base, engine  # <--- DÒNG NÀY ĐANG BỊ THIẾU
+
+from app.models import incident, location, route, ticket, user, vehicle, booking
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -9,6 +12,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Tự động tạo tất cả các bảng chưa có trong DB
+Base.metadata.create_all(bind=engine)
 
 # Set all CORS enabled origins
 app.add_middleware(

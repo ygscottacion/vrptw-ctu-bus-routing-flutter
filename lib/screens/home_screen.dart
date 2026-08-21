@@ -14,15 +14,15 @@ class _HomeScreenState extends State<HomeScreen>
   // CO2 animation
   late AnimationController _co2Controller;
   late Animation<double> _co2Animation;
-  String _selectedLocation = '';
 
-  static const _locations = [
-    'Trường ĐH Cần Thơ',
-    'Vincom Xuân Khánh',
-    'Vincom Hùng Vương',
-    'Bến Ninh Kiều',
-    'Bến xe Cần Thơ',
-  ];
+  // CTUPay wallet (test/demo state only — replace with real backend later)
+  double _balance = 500000;
+
+  // Tiny overlap of the wallet card into the bottom of the hero image.
+  // Uses Transform.translate (not Positioned overflow) so the card's
+  // hit-test area stays accurate even though it's only overlapping a
+  // couple of points.
+  static const double _walletOverlap = 3;
 
   @override
   void initState() {
@@ -54,24 +54,6 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  void _selectLocation(String name, BuildContext context) {
-    setState(() => _selectedLocation = name);
-    showSimpleNotification(
-      Text('Đã chọn: $name', style: const TextStyle(color: Colors.white)),
-      background: AppColors.teal,
-    );
-    // Navigate to Map tab via parent (index 1)
-    Future.delayed(const Duration(milliseconds: 600), () {
-      if (mounted) {
-        // Trigger tab switch through the shell
-        final scaffold = Scaffold.maybeOf(context);
-        if (scaffold != null) {
-          DefaultTabController.maybeOf(context);
-        }
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,7 +64,15 @@ class _HomeScreenState extends State<HomeScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHero(context),
-              _buildSearchSection(context),
+              Transform.translate(
+                offset: const Offset(0, -_walletOverlap),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg),
+                  child: _buildWalletSection(context),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
               _buildBody(context),
             ],
           ),
@@ -185,79 +175,167 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ─── SEARCH SECTION ───────────────────────────────────────
-  Widget _buildSearchSection(BuildContext context) {
+  // ─── CTUPay WALLET SECTION ────────────────────────────────
+  Widget _buildWalletSection(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [AppColors.teal, AppColors.tealDark],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(AppRadius.md),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 2)),
+        ],
       ),
-      padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.lg),
-      child: Column(
+      child: Row(
         children: [
-          // Search bar
-          GestureDetector(
-            onTap: () => _showSearchModal(context),
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.white,
-                borderRadius: BorderRadius.circular(AppRadius.sm),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08), blurRadius: 8)
-                ],
-              ),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-              child: Row(
-                children: [
-                  const Text('🔍', style: TextStyle(fontSize: 16)),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Text(
-                      _selectedLocation.isNotEmpty
-                          ? '📍 $_selectedLocation'
-                          : 'Nhập địa điểm của bạn',
-                      style: const TextStyle(
-                          color: AppColors.textMuted, fontSize: 14),
-                    ),
-                  ),
-                ],
-              ),
+          Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              color: AppColors.tealBg,
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+                child: Text('💳', style: TextStyle(fontSize: 14))),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'CTUPay',
+                  style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  '${_formatCurrency(_balance)} ₫',
+                  style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: AppSpacing.md),
-          // Quick location chips
-          Wrap(
-            spacing: AppSpacing.sm,
-            children: ['Vincom Xuân Khánh', 'Vincom Hùng Vương'].map((loc) {
-              return GestureDetector(
-                onTap: () => _selectLocation(loc, context),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.5), width: 1.5),
-                  ),
-                  child: Text(loc,
-                      style: const TextStyle(
-                          color: AppColors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500)),
-                ),
-              );
-            }).toList(),
+          _walletActionButton(
+            'Nạp',
+                () => _showAmountDialog(context, isDeposit: true),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          _walletActionButton(
+            'Rút',
+                () => _showAmountDialog(context, isDeposit: false),
           ),
         ],
       ),
     );
+  }
+
+  Widget _walletActionButton(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.tealBg,
+          borderRadius: BorderRadius.circular(AppRadius.full),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+              color: AppColors.teal, fontWeight: FontWeight.w600, fontSize: 12),
+        ),
+      ),
+    );
+  }
+
+
+  void _showAmountDialog(BuildContext context, {required bool isDeposit}) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.md)),
+        title: Text(isDeposit ? 'Nạp tiền vào CTUPay' : 'Rút tiền từ CTUPay'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(),
+          decoration: const InputDecoration(
+            hintText: 'Nhập số tiền (VNĐ)',
+            prefixText: '₫ ',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal),
+            onPressed: () => _handleWalletSubmit(ctx, controller.text, isDeposit),
+            child: Text(
+              isDeposit ? 'Nạp' : 'Rút',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _handleWalletSubmit(BuildContext ctx, String rawText, bool isDeposit) {
+    final cleaned = rawText.replaceAll('.', '').replaceAll(',', '').trim();
+    final amount = double.tryParse(cleaned) ?? 0;
+
+    if (amount <= 0) {
+      Navigator.pop(ctx);
+      showSimpleNotification(
+        const Text('Vui lòng nhập số tiền hợp lệ',
+            style: TextStyle(color: Colors.white)),
+        background: Colors.redAccent,
+      );
+      return;
+    }
+
+    if (!isDeposit && amount > _balance) {
+      Navigator.pop(ctx);
+      showSimpleNotification(
+        const Text('Số dư không đủ để rút', style: TextStyle(color: Colors.white)),
+        background: Colors.redAccent,
+      );
+      return;
+    }
+
+    setState(() {
+      _balance += isDeposit ? amount : -amount;
+    });
+    Navigator.pop(ctx);
+    showSimpleNotification(
+      Text(
+        isDeposit
+            ? 'Đã nạp ${_formatCurrency(amount)} ₫'
+            : 'Đã rút ${_formatCurrency(amount)} ₫',
+        style: const TextStyle(color: Colors.white),
+      ),
+      background: AppColors.teal,
+    );
+  }
+
+  String _formatCurrency(double? value) {
+    final val = (value ?? 0).toInt();
+    return val.toString().replaceAllMapped(
+        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
   }
 
   // ─── BODY ─────────────────────────────────────────────────
@@ -271,12 +349,12 @@ class _HomeScreenState extends State<HomeScreen>
           Row(
             children: [
               Expanded(
-                  child: _buildFeatureCard('🚌', 'Tuyến xe', AppColors.tealBg,
-                      () {})),
+                  child: _buildFeatureCard(
+                      '🚌', 'Đặt Tuyến Xe', AppColors.tealBg, () {})),
               const SizedBox(width: AppSpacing.md),
               Expanded(
                   child: _buildFeatureCard('🎫', 'Mua vé', AppColors.purpleBg,
-                      () {})),
+                          () {})),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
@@ -309,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen>
               width: 72,
               height: 72,
               decoration:
-                  BoxDecoration(color: bgColor, shape: BoxShape.circle),
+              BoxDecoration(color: bgColor, shape: BoxShape.circle),
               child: Center(
                   child: Text(emoji, style: const TextStyle(fontSize: 36))),
             ),
@@ -384,7 +462,7 @@ class _HomeScreenState extends State<HomeScreen>
     return AnimatedBuilder(
       animation: _co2Animation,
       builder: (_, __) {
-        final val = _co2Animation.value.toInt();
+        final val = (_co2Animation.value).toInt();
         final formatted = val.toString().replaceAllMapped(
             RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
         return _ecoStatItem('Lượng CO2 giảm', '$formatted Kg', AppColors.green);
@@ -419,114 +497,6 @@ class _HomeScreenState extends State<HomeScreen>
               textAlign: TextAlign.center),
         ],
       ),
-    );
-  }
-
-  // ─── SEARCH MODAL ─────────────────────────────────────────
-  void _showSearchModal(BuildContext context) {
-    String query = '';
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(builder: (ctx, setModalState) {
-          final filtered = _locations
-              .where((l) =>
-                  query.isEmpty ||
-                  l.toLowerCase().contains(query.toLowerCase()))
-              .toList();
-          return DraggableScrollableSheet(
-            expand: false,
-            initialChildSize: 0.6,
-            builder: (_, scrollCtrl) => Padding(
-              padding: EdgeInsets.only(
-                  left: AppSpacing.lg,
-                  right: AppSpacing.lg,
-                  top: AppSpacing.lg,
-                  bottom: MediaQuery.of(ctx).viewInsets.bottom +
-                      AppSpacing.xxxl),
-              child: Column(
-                children: [
-                  // Handle
-                  Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                      decoration: BoxDecoration(
-                          color: AppColors.border,
-                          borderRadius:
-                              BorderRadius.circular(AppRadius.full))),
-                  const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('Tìm kiếm địa điểm',
-                        style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary)),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  // Search input
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.bg,
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md),
-                    child: Row(
-                      children: [
-                        const Text('🔍', style: TextStyle(fontSize: 16)),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: TextField(
-                            autofocus: true,
-                            decoration: const InputDecoration(
-                              hintText: 'Nhập tên địa điểm...',
-                              hintStyle:
-                                  TextStyle(color: AppColors.textMuted),
-                              border: InputBorder.none,
-                            ),
-                            onChanged: (v) =>
-                                setModalState(() => query = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Expanded(
-                    child: ListView.separated(
-                      controller: scrollCtrl,
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const Divider(
-                          height: 1, color: AppColors.border),
-                      itemBuilder: (_, i) => ListTile(
-                        leading: const Text('📍',
-                            style: TextStyle(fontSize: 18)),
-                        title: Text(filtered[i],
-                            style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                color: AppColors.textPrimary)),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _selectLocation(filtered[i], context);
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        });
-      },
     );
   }
 }

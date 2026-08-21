@@ -1,13 +1,14 @@
 import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from app.models.ticket import TicketStatus
 
 class TicketBase(BaseModel):
     route_id: Optional[int] = None
 
-class TicketCreate(TicketBase):
-    pass
+# Thay thế TicketCreate bằng TicketPurchase để mua theo số lượng
+class TicketPurchase(BaseModel):
+    quantity: int = Field(default=1, ge=1, le=10, description="Số lượng vé muốn mua")
 
 class TicketResponse(TicketBase):
     id: int

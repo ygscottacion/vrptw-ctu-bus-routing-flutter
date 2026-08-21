@@ -1,6 +1,8 @@
 import logging
-from typing import Any, List
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+
+from typing import Any, List, Optional
+# BỔ SUNG: Đã thêm Query vào dòng import này
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -22,6 +24,24 @@ from app.services.vrptw_solver import VRPTWSolverService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/", response_model=List[RouteResponse])
+def list_active_routes(
+    db: Session = Depends(deps.get_db),
+    current_student: User = Depends(deps.get_current_student),
+    # BỔ SUNG: Khai báo tham số location_name ở đây
+    location_name: Optional[str] = Query(None, description="Lọc tuyến xe theo tên trạm đón (Hỗ trợ tìm kiếm tương đối)")
+) -> Any:
+    """
+    Danh sách các tuyến đang khả dụng HÔM NAY để hành khách chọn khi mua vé
+    (status = pending hoặc in_progress). Mỗi tuyến kèm danh sách stops (trạm dừng
+    theo thứ tự) để Flutter hiển thị tên tuyến / lộ trình.
+
+    Student hoặc Admin.
+    """
+    # Biến location_name giờ đã tồn tại hợp lệ
+    return crud_route.get_active_routes(db, location_name=location_name)
 
 
 def _run_route_generation_job(
@@ -210,6 +230,7 @@ def end_route(
     if route.status != RouteStatus.IN_PROGRESS:
         raise HTTPException(status_code=409, detail="Only an in-progress route can be completed")
     return crud_route.update_route_status(db, route, RouteStatus.COMPLETED)
+
 
 @router.get("/driver/{driver_id}", response_model=List[RouteResponse])
 def get_driver_routes(

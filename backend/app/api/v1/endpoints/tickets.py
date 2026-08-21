@@ -5,20 +5,20 @@ from sqlalchemy.orm import Session
 from app.api import deps
 from app.crud import crud_ticket
 from app.models.user import User
-from app.schemas.ticket import TicketCreate, TicketResponse, QRVerifyRequest
+from app.schemas.ticket import TicketPurchase, TicketResponse, QRVerifyRequest
 
 router = APIRouter()
 
-@router.post("/book", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
-def book_ticket(
-    ticket_in: TicketCreate,
+@router.post("/buy", response_model=List[TicketResponse], status_code=status.HTTP_201_CREATED)
+def buy_tickets(
+    purchase_in: TicketPurchase,
     db: Session = Depends(deps.get_db),
     current_student: User = Depends(deps.get_current_student)
 ) -> Any:
     """
-    Student books a bus ticket and gets a unique QR Code for check-in.
+    Student buys bus tickets in bulk and gets unique QR Codes for check-in.
     """
-    return crud_ticket.create_ticket(db=db, user_id=current_student.id, route_id=ticket_in.route_id)
+    return crud_ticket.create_tickets(db=db, user_id=current_student.id, quantity=purchase_in.quantity)
 
 @router.get("/me", response_model=List[TicketResponse])
 def read_my_tickets(

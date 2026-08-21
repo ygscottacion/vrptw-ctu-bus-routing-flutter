@@ -64,7 +64,6 @@ class _StudentShellState extends State<StudentShell> {
   Widget build(BuildContext context) {
     final screens = [
       const HomeScreen(),
-      const MapScreen(),
       TicketScreen(api: widget.api),
       const NotificationScreen(),
       SettingsScreen(apiService: widget.api, onLoggedIn: widget.onLoggedIn),
@@ -77,7 +76,6 @@ class _StudentShellState extends State<StudentShell> {
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Trang chủ'),
-          NavigationDestination(icon: Icon(Icons.map_rounded), label: 'Bản đồ'),
           NavigationDestination(icon: Icon(Icons.confirmation_num_rounded), label: 'Vé của tôi'),
           NavigationDestination(icon: Icon(Icons.notifications_rounded), label: 'Thông báo'),
           NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Cài đặt'),
