@@ -14,19 +14,19 @@ class TicketScreen extends StatefulWidget {
 class _TicketScreenState extends State<TicketScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  String _selectedRoute = '1';
-  String _selectedType = '20';
+  String? _selectedRoute;
+  String _selectedType = '10';
 
-  static const _routes = [
-    _Route('1', 'Tuyến 1: CTU → Vincom Xuân Khánh', 7000, AppColors.teal),
-    _Route('2', 'Tuyến 2: CTU → Bến xe Cần Thơ', 9000, AppColors.purple),
-    _Route('3', 'Tuyến 3: CTU → Ninh Kiều', 8000, AppColors.orange),
-  ];
+  List<_Route> _routes = [];
+  bool _loadingRoutes = true;
+  String? _routeError;
 
+  // 4 gói vé, hiển thị dạng lưới 2x2: hàng trên 10 vé/20 vé, hàng dưới Vé tháng/Vé học kỳ
   static const _types = [
+    _TicketType('10', '10 lượt', 10, null),
     _TicketType('20', '20 lượt', 20, null),
-    _TicketType('40', '40 lượt', 40, null),
     _TicketType('month', 'Vé tháng', 0, 150000),
+    _TicketType('semester', 'Vé học kỳ', 0, 500000),
   ];
 
   List<_MyTicket> _myTickets = [];
@@ -36,25 +36,77 @@ class _TicketScreenState extends State<TicketScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadRoutes();
     _loadTickets();
+  }
+
+  Future<void> _loadRoutes() async {
+    try {
+      final items = await widget.api.fetchActiveRoutes();
+      if (!mounted) return;
+
+      final List<_Route> loadedRoutes = [];
+      final colors = [
+        AppColors.teal,
+        AppColors.purple,
+        AppColors.orange,
+        Colors.blue,
+        Colors.green,
+      ];
+
+      for (var i = 0; i < items.length; i++) {
+        final r = items[i] as Map<String, dynamic>;
+        final id = r['id'].toString();
+        final stops = r['stops'] as List<dynamic>? ?? [];
+        String label = 'Tuyến $id';
+        if (stops.isNotEmpty) {
+          final first = stops.first['location']?['name'] ?? 'Điểm đầu';
+          final last = stops.last['location']?['name'] ?? 'Điểm cuối';
+          label = 'Tuyến $id: $first → $last';
+        }
+        loadedRoutes.add(_Route(id, label, 7000, colors[i % colors.length]));
+      }
+
+      setState(() {
+        _routes = loadedRoutes;
+        _routeError = null;
+        if (_routes.isNotEmpty) {
+          _selectedRoute = _routes.first.id;
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _routeError = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loadingRoutes = false);
+    }
   }
 
   Future<void> _loadTickets() async {
     try {
       final items = await widget.api.fetchMyTickets();
       if (!mounted) return;
-      setState(() => _myTickets = items.map((item) {
-        final ticket = item as Map<String, dynamic>;
-        final active = ticket['status'] == 'active';
-        return _MyTicket(
-          'BUS${ticket['id']}', 'Tuyến #${ticket['route_id'] ?? 'Chưa chọn'}',
-          'Vé điện tử', ticket['created_at']?.toString().split('T').first ?? '—',
-          active ? 1 : 0, active, active ? AppColors.teal : AppColors.purple,
-          ticket['qr_code']?.toString() ?? '',
-        );
-      }).toList());
+      setState(
+            () => _myTickets = items.map((item) {
+          final ticket = item as Map<String, dynamic>;
+          final active = ticket['status'] == 'active';
+          return _MyTicket(
+            'BUS${ticket['id']}',
+            'Tuyến #${ticket['route_id'] ?? 'Chưa chọn'}',
+            'Vé điện tử',
+            ticket['created_at']?.toString().split('T').first ?? '—',
+            active ? 1 : 0,
+            active,
+            active ? AppColors.teal : Colors.grey.shade600,
+            ticket['qr_code']?.toString() ?? '',
+          );
+        }).toList(),
+      );
     } catch (_) {
-      // Người dùng chưa đăng nhập hoặc backend chưa sẵn sàng: giữ danh sách trống.
+      // Người dùng chưa đăng nhập hoặc backend chưa sẵn sàng.
     } finally {
       if (mounted) setState(() => _loadingTickets = false);
     }
@@ -70,26 +122,53 @@ class _TicketScreenState extends State<TicketScreen>
     return '${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}đ';
   }
 
+  // Tỷ lệ ưu đãi theo loại vé: 10 vé & 20 vé không giảm, vé tháng giảm 10%, vé học kỳ giảm 20%
+  double _discountRateFor(String typeId) {
+    switch (typeId) {
+      case 'month':
+        return 0.1;
+      case 'semester':
+        return 0.2;
+      default:
+        return 0.0;
+    }
+  }
+
   Map<String, int> get _price {
+    if (_routes.isEmpty || _selectedRoute == null) {
+      return {'original': 0, 'discount': 0, 'total': 0};
+    }
     final route = _routes.firstWhere((r) => r.id == _selectedRoute);
     final type = _types.firstWhere((t) => t.id == _selectedType);
-    final original =
-        type.flatPrice ?? (route.price * type.multiplier).round();
-    final discount = (original * 0.1).round();
-    return {'original': (original / 0.9).round(), 'discount': discount, 'total': original};
+    final base = type.flatPrice ?? (route.price * type.multiplier).round();
+    final rate = _discountRateFor(type.id);
+    final discount = (base * rate).round();
+    final total = base - discount;
+    return {'original': base, 'discount': discount, 'total': total};
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bg,
       appBar: AppBar(
-        title: const Text('Vé xe'),
+        title: const Text(
+          'Vé & Check-in',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        elevation: 0,
+        backgroundColor: AppColors.white,
+        centerTitle: true,
         bottom: TabBar(
           controller: _tabController,
           labelColor: AppColors.teal,
           unselectedLabelColor: AppColors.textMuted,
           indicatorColor: AppColors.teal,
-          indicatorWeight: 2.5,
+          indicatorWeight: 3.0,
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+          ),
           tabs: const [
             Tab(text: 'Vé của tôi'),
             Tab(text: 'Mua vé'),
@@ -98,18 +177,36 @@ class _TicketScreenState extends State<TicketScreen>
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildMyTickets(),
-          _buildBuyTicket(),
-        ],
+        children: [_buildMyTickets(), _buildBuyTicket()],
       ),
     );
   }
 
-  // ─── MY TICKETS ───────────────────────────────────────────
+  // ─── MY TICKETS (Tối ưu UI cho việc quét QR nhanh) ─────────
   Widget _buildMyTickets() {
-    if (_loadingTickets) return const Center(child: CircularProgressIndicator());
-    if (_myTickets.isEmpty) return const Center(child: Text('Bạn chưa có vé nào.'));
+    if (_loadingTickets)
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.teal),
+      );
+    if (_myTickets.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.directions_bus_outlined,
+              size: 64,
+              color: AppColors.textMuted.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            const Text(
+              'Bạn chưa có vé nào.',
+              style: TextStyle(color: AppColors.textMuted, fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
     return ListView.builder(
       padding: const EdgeInsets.all(AppSpacing.lg),
       itemCount: _myTickets.length,
@@ -122,217 +219,288 @@ class _TicketScreenState extends State<TicketScreen>
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
+        borderRadius: BorderRadius.circular(AppRadius.lg),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2))
+            color: AppColors.teal.withValues(alpha: 0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
-      clipBehavior: Clip.hardEdge,
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // Ticket header
+          // Header tuyến xe
           Container(
             color: t.color,
-            padding: const EdgeInsets.all(AppSpacing.md),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    const Text('Tuyến xe buýt',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w500)),
-                    Text(t.route,
-                        style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white)),
+                    const Icon(
+                      Icons.directions_bus_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Text(
+                      t.route,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
                   ],
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.sm, vertical: 4),
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: t.isValid ? 0.2 : 0.15),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(AppRadius.full),
                   ),
                   child: Text(
-                    t.isValid ? 'Còn hiệu lực' : 'Hết hạn',
+                    t.isValid ? 'Sẵn sàng' : 'Hết hạn',
                     style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          // Ticket body
+
+          // Khu vực trung tâm: QR Code siêu to khổng lồ
+          if (t.isValid) ...[
+            const SizedBox(height: AppSpacing.xl),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                border: Border.all(
+                  color: AppColors.teal.withValues(alpha: 0.2),
+                  width: 2,
+                ),
+              ),
+              child: QrImageView(
+                data: t.qrData,
+                version: QrVersions.auto,
+                size: 200, // Tăng size to lên để máy dễ quét
+                backgroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            const Text(
+              'Đưa mã này vào máy quét trên xe',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.teal,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            const Divider(height: 1, color: AppColors.border),
+          ],
+
+          // Thông tin phụ
           Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Row(
               children: [
-                Row(children: [
-                  Expanded(child: _detailItem('Mã vé', '#${t.id}')),
-                  Expanded(child: _detailItem('Loại vé', t.type)),
-                ]),
-                const SizedBox(height: AppSpacing.sm),
-                Row(children: [
-                  Expanded(child: _detailItem('Ngày hết hạn', t.expiry)),
-                  Expanded(
-                    child: _detailItem('Lượt còn lại', '${t.trips} lượt',
-                        valueColor: t.trips > 0 ? AppColors.teal : AppColors.red),
+                Expanded(child: _detailItem('Mã vé', t.id)),
+                Expanded(child: _detailItem('Loại vé', t.type)),
+                Expanded(
+                  child: _detailItem(
+                    'Lượt còn lại',
+                    '${t.trips}',
+                    valueColor: t.trips > 0 ? AppColors.teal : Colors.red,
+                    isRight: true,
                   ),
-                ]),
-                if (t.isValid) ...[
-                  const SizedBox(height: AppSpacing.md),
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: AppColors.border),
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                    child: QrImageView(
-                      data: t.qrData,
-                      version: QrVersions.auto,
-                      size: 110,
-                      backgroundColor: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text('Quét mã để sử dụng vé',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.textMuted)),
-                ],
+                ),
               ],
             ),
-          ),
-          // Tear line
-          Stack(
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: List.generate(
-                      30,
-                      (idx) => Expanded(
-                            child: Container(
-                                height: 1.5,
-                                color: idx % 2 == 0
-                                    ? AppColors.border
-                                    : Colors.transparent),
-                          )),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: const BoxDecoration(
-                        color: AppColors.bg, shape: BoxShape.circle)),
-              ),
-              Positioned(
-                right: 0,
-                child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: const BoxDecoration(
-                        color: AppColors.bg, shape: BoxShape.circle)),
-              ),
-            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _detailItem(String label, String value, {Color? valueColor}) {
+  Widget _detailItem(
+      String label,
+      String value, {
+        Color? valueColor,
+        bool isRight = false,
+      }) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: isRight
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textMuted,
-                fontWeight: FontWeight.w500)),
-        const SizedBox(height: 2),
-        Text(value,
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: valueColor ?? AppColors.textPrimary)),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.textMuted,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: valueColor ?? AppColors.textPrimary,
+          ),
+        ),
       ],
     );
   }
 
-  // ─── BUY TICKET ───────────────────────────────────────────
+  // ─── BUY TICKET (Tối ưu UI dạng Form & Checkout Botom Bar) ───
   Widget _buildBuyTicket() {
-    final p = _price;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionTitle('Chọn tuyến xe'),
-          ..._routes.map((r) => _buildRouteOption(r)),
-          _sectionTitle('Chọn loại vé'),
-          Row(
-            children: _types
-                .map((t) => Expanded(child: _buildTypeBtn(t)))
-                .toList(),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          // Payment summary
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(AppRadius.sm),
-              boxShadow: [
-                BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06), blurRadius: 8)
-              ],
-            ),
-            padding: const EdgeInsets.all(AppSpacing.md),
+    if (_loadingRoutes) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.teal));
+    }
+    if (_routeError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text('Lỗi tải dữ liệu: $_routeError', style: const TextStyle(color: Colors.red)),
+        ),
+      );
+    }
+    if (_routes.isEmpty) {
+      return const Center(child: Text('Không có tuyến đường khả dụng.', style: TextStyle(color: AppColors.textMuted)));
+    }
+    return Column(
+      children: [
+        // Phần thân form cuộn được
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.lg),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _summaryRow('Giá vé gốc', _formatVND(p['original']!)),
+                _sectionTitle('1. Chọn tuyến đường'),
+                ..._routes.map((r) => _buildRouteOption(r)),
+                const SizedBox(height: AppSpacing.md),
+                _sectionTitle('2. Chọn gói vé'),
+                // Hàng trên: 10 vé / 20 vé
+                Row(
+                  children: _types
+                      .sublist(0, 2)
+                      .map((t) => Expanded(child: _buildTypeBtn(t)))
+                      .toList(),
+                ),
                 const SizedBox(height: AppSpacing.sm),
-                _summaryRow('Giảm giá sinh viên (10%)',
-                    '-${_formatVND(p['discount']!)}',
-                    valueColor: AppColors.green),
-                const Divider(height: AppSpacing.xl, color: AppColors.border),
-                _summaryRow('Tổng cộng', _formatVND(p['total']!),
-                    isBold: true, valueColor: AppColors.teal),
+                // Hàng dưới: Vé tháng / Vé học kỳ
+                Row(
+                  children: _types
+                      .sublist(2, 4)
+                      .map((t) => Expanded(child: _buildTypeBtn(t)))
+                      .toList(),
+                ),
+                const SizedBox(height: 40), // Spacing padding
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.lg),
-          // Buy button
+        ),
+        // Phần thanh toán cố định ở đáy
+        _buildCheckoutBottomBar(),
+      ],
+    );
+  }
+
+  Widget _buildCheckoutBottomBar() {
+    final p = _price;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        30,
+      ), // Padding cho SafeArea
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(AppRadius.lg),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Tổng thanh toán',
+                style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+              ),
+              Text(
+                _formatVND(p['total']!),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.teal,
+                ),
+              ),
+            ],
+          ),
+          if (p['discount']! > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Đã áp dụng ưu đãi',
+                    style: TextStyle(fontSize: 12, color: Colors.green),
+                  ),
+                  Text(
+                    '-${_formatVND(p['discount']!)}',
+                    style: const TextStyle(fontSize: 12, color: Colors.green),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: AppSpacing.md),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
+            height: 54, // Nút to, dễ bấm
+            child: ElevatedButton(
               onPressed: _handleBuyTicket,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.teal,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(vertical: AppSpacing.md),
                 shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppRadius.md)),
-                elevation: 4,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                elevation: 0,
               ),
-              icon: const Text('✅', style: TextStyle(fontSize: 18)),
-              label: const Text('Mua vé ngay',
-                  style: TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w700)),
+              child: const Text(
+                'Thanh toán ngay',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ),
           ),
         ],
@@ -341,76 +509,92 @@ class _TicketScreenState extends State<TicketScreen>
   }
 
   Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary)),
-      );
+    padding: const EdgeInsets.only(bottom: AppSpacing.md, top: AppSpacing.sm),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.bold,
+        color: AppColors.textPrimary,
+      ),
+    ),
+  );
 
   Widget _buildRouteOption(_Route r) {
     final isActive = _selectedRoute == r.id;
     return GestureDetector(
       onTap: () => setState(() => _selectedRoute = r.id),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: AppSpacing.md),
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFFF0FDFC) : AppColors.white,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
+          color: isActive
+              ? AppColors.teal.withValues(alpha: 0.05)
+              : AppColors.white,
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
-              color: isActive ? AppColors.teal : AppColors.border,
-              width: 1.5),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04), blurRadius: 6)
-          ],
+            color: isActive ? AppColors.teal : AppColors.border,
+            width: isActive ? 2.0 : 1.0,
+          ),
         ),
         child: Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                  color: r.color,
-                  borderRadius: BorderRadius.circular(10)),
-              child: const Center(
-                  child: Text('🚌', style: TextStyle(fontSize: 16))),
+                color: r.color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(child: Icon(Icons.directions_bus, color: r.color)),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(r.label,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary)),
-                  Text('Giá: ${_formatVND(r.price)}/lượt',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary)),
+                  Text(
+                    r.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Giá: ${_formatVND(r.price)}/lượt',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                 ],
               ),
             ),
+            // Nút Radio giả
             Container(
-              width: 20,
-              height: 20,
+              width: 24,
+              height: 24,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                    color: isActive ? AppColors.teal : AppColors.border,
-                    width: 2),
+                  color: isActive ? AppColors.teal : AppColors.border,
+                  width: 2,
+                ),
               ),
               child: isActive
                   ? Center(
-                      child: Container(
-                          width: 10,
-                          height: 10,
-                          decoration: const BoxDecoration(
-                              color: AppColors.teal,
-                              shape: BoxShape.circle)))
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: const BoxDecoration(
+                    color: AppColors.teal,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              )
                   : null,
             ),
           ],
@@ -422,67 +606,85 @@ class _TicketScreenState extends State<TicketScreen>
   Widget _buildTypeBtn(_TicketType t) {
     final isActive = _selectedType == t.id;
     final route = _routes.firstWhere((r) => r.id == _selectedRoute);
-    final price = t.flatPrice ?? route.price * t.multiplier;
+    final basePrice = t.flatPrice ?? route.price * t.multiplier;
+    final rate = _discountRateFor(t.id);
+    final finalPrice = basePrice - (basePrice * rate);
     return GestureDetector(
       onTap: () => setState(() => _selectedType = t.id),
-      child: Container(
-        margin: const EdgeInsets.only(right: AppSpacing.sm),
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm, vertical: AppSpacing.sm),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(
+          right: AppSpacing.sm,
+          bottom: AppSpacing.sm,
+        ),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
         decoration: BoxDecoration(
           color: isActive ? AppColors.teal : AppColors.white,
-          borderRadius: BorderRadius.circular(AppRadius.sm),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(
-              color: isActive ? AppColors.teal : AppColors.border,
-              width: 1.5),
+            color: isActive ? AppColors.teal : AppColors.border,
+          ),
+          boxShadow: isActive
+              ? [
+            BoxShadow(
+              color: AppColors.teal.withValues(alpha: 0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ]
+              : null,
         ),
         child: Column(
           children: [
-            Text(t.label,
+            Text(
+              t.label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: isActive ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _formatVND(finalPrice.round()),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: isActive
+                    ? Colors.white.withValues(alpha: 0.9)
+                    : AppColors.teal,
+              ),
+            ),
+            if (rate > 0)
+              Text(
+                '-${(rate * 100).round()}%',
                 style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: isActive ? Colors.white : AppColors.textPrimary)),
-            Text(_formatVND(price.round()),
-                style: TextStyle(
-                    fontSize: 11,
-                    color: isActive ? Colors.white70 : AppColors.textSecondary)),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: isActive
+                      ? Colors.white.withValues(alpha: 0.85)
+                      : Colors.green,
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _summaryRow(String label, String value,
-      {bool isBold = false, Color? valueColor}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label,
-            style: TextStyle(
-                fontSize: isBold ? 15 : 13,
-                color: AppColors.textSecondary,
-                fontWeight:
-                    isBold ? FontWeight.w700 : FontWeight.w400)),
-        Text(value,
-            style: TextStyle(
-                fontSize: isBold ? 15 : 13,
-                fontWeight:
-                    isBold ? FontWeight.w700 : FontWeight.w600,
-                color: valueColor ?? AppColors.textPrimary)),
-      ],
-    );
-  }
-
   Future<void> _handleBuyTicket() async {
+    if (_selectedRoute == null) return;
     final route = _routes.firstWhere((r) => r.id == _selectedRoute);
     final routeLabel = route.label.split(': ').last;
     Map<String, dynamic> ticket;
     try {
-      ticket = await widget.api.bookTicket(int.parse(_selectedRoute));
+      ticket = await widget.api.bookTicket(int.parse(_selectedRoute!));
       await _loadTickets();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không thể mua vé: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thể mua vé: $e')));
       return;
     }
     if (!mounted) return;
@@ -490,59 +692,89 @@ class _TicketScreenState extends State<TicketScreen>
       context: context,
       backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppRadius.lg))),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.full),
+        ),
+      ),
       builder: (ctx) => Padding(
         padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 40),
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          40,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-                decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius:
-                        BorderRadius.circular(AppRadius.full))),
-            const Text('✅', style: TextStyle(fontSize: 56)),
-            const SizedBox(height: AppSpacing.sm),
-            const Text('Mua vé thành công!',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
+              width: 48,
+              height: 5,
+              margin: const EdgeInsets.only(bottom: AppSpacing.xl),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(AppRadius.full),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.green,
+                size: 64,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            const Text(
+              'Thanh toán thành công!',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
             const SizedBox(height: AppSpacing.sm),
             const Text(
-                'Vé của bạn đã được kích hoạt và có thể sử dụng ngay.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13, color: AppColors.textSecondary)),
-            const SizedBox(height: AppSpacing.md),
+              'Vé của bạn đã được lưu vào hệ thống.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.xl),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(AppSpacing.lg),
               decoration: BoxDecoration(
-                  color: AppColors.bg,
-                  borderRadius: BorderRadius.circular(AppRadius.sm)),
+                color: AppColors.bg,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
               child: Column(
                 children: [
-                  Text('#BUS${ticket['id']}',
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary)),
-                  Text(routeLabel,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary)),
+                  Text(
+                    '#BUS${ticket['id']}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    routeLabel,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: AppSpacing.md),
             SizedBox(
               width: double.infinity,
+              height: 44,
               child: ElevatedButton(
                 onPressed: () {
                   Navigator.pop(ctx);
@@ -550,16 +782,18 @@ class _TicketScreenState extends State<TicketScreen>
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.teal,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: AppSpacing.md),
                   shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppRadius.sm)),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
                 ),
-                child: const Text('Xem vé của tôi',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w700)),
+                child: const Text(
+                  'Mở mã QR ngay',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           ],
@@ -588,6 +822,14 @@ class _MyTicket {
   final int trips;
   final bool isValid;
   final Color color;
-  const _MyTicket(this.id, this.route, this.type, this.expiry, this.trips,
-      this.isValid, this.color, this.qrData);
+  const _MyTicket(
+      this.id,
+      this.route,
+      this.type,
+      this.expiry,
+      this.trips,
+      this.isValid,
+      this.color,
+      this.qrData,
+      );
 }

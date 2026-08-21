@@ -114,10 +114,20 @@ class ApiService {
     }
   }
 
+  /// 5. Lấy danh sách tuyến khả dụng cho hành khách
+  Future<List<dynamic>> fetchActiveRoutes() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesActive}'), headers: _headers);
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as List<dynamic>;
+    } else {
+      throw Exception('Không thể tải danh sách tuyến: ${response.statusCode}');
+    }
+  }
+
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        if (_authToken != null) 'Authorization': 'Bearer $_authToken',
-      };
+    'Content-Type': 'application/json',
+    if (_authToken != null) 'Authorization': 'Bearer $_authToken',
+  };
 
   Future<List<dynamic>> fetchMyTickets() async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}${ApiConfig.ticketsMe}'), headers: _headers);

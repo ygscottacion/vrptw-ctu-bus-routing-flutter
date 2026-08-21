@@ -3,6 +3,25 @@ from datetime import date
 from sqlalchemy.orm import Session
 from app.models.route import Route, RouteStop, RouteStatus
 
+# BỔ SUNG IMPORT Location TẠI ĐÂY
+from app.models.location import Location
+
+def get_active_routes(db: Session, location_name: Optional[str] = None) -> List[Route]:
+    # Lấy các tuyến đang active (pending hoặc in_progress)
+    query = db.query(Route).filter(
+        Route.status.in_([RouteStatus.PENDING, RouteStatus.IN_PROGRESS])
+    )
+
+    # NẾU CÓ TRUYỀN TÊN TRẠM -> Áp dụng bộ lọc
+    if location_name:
+        # Sửa chữ 'Stop' thành 'RouteStop' cho khớp với Model
+        query = query.join(RouteStop, RouteStop.route_id == Route.id)\
+                     .join(Location, Location.id == RouteStop.location_id)\
+                     .filter(Location.name.ilike(f"%{location_name}%"))
+
+    # order_by(...) hoặc các logic cũ nếu có, bạn giữ nguyên ở đây
+    return query.all()
+
 def create_route(db: Session, vehicle_id: int, route_date: date, total_distance: float, stops_data: List[dict]) -> Route:
     db_route = Route(
         vehicle_id=vehicle_id,

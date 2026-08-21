@@ -22,6 +22,7 @@ class ApiConfig {
   static const String locations = '/locations/';
   static const String vehicles = '/vehicles/';
   static const String routesGenerate = '/routes/generate';
+  static const String routesActive = '/routes/';
   static const String routesDriver = '/routes/driver/';
   static const String ticketsMe = '/tickets/me';
   static const String ticketsBook = '/tickets/book';

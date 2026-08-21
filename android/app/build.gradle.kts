@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -12,6 +12,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        getByName("main").java.srcDirs("src/main/kotlin")
     }
 
     defaultConfig {
@@ -34,9 +38,9 @@ android {
     }
 }
 
-kotlin {
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
