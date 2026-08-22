@@ -13,7 +13,7 @@ def test_rbac_get_current_student(db):
 def test_ticket_booking_and_qr_verification(db):
     student_user = crud_user.get_user_by_username(db, username="student1")
     if not student_user:
-        user_in = UserCreate(username="student1", password="password123", role=UserRole.PASSENGER)
+        user_in = UserCreate(username="student1", password="student123", role=UserRole.PASSENGER)
         student_user = crud_user.create_user(db, user_in=user_in)
     
     # 1. Student books ticket

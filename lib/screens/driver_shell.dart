@@ -1,24 +1,113 @@
 import 'package:flutter/material.dart';
+import '../features/driver/driver_alerts_tab.dart';
+import '../features/driver/driver_home_tab.dart';
+import '../features/driver/driver_map_tab.dart';
+import '../features/driver/driver_profile_tab.dart';
+import '../features/driver/driver_qr_tab.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
 class DriverShell extends StatefulWidget {
-  const DriverShell({super.key, required this.user, required this.api, required this.onLogout});
-  final Map<String, dynamic> user; final ApiService api; final VoidCallback onLogout;
-  @override State<DriverShell> createState() => _DriverShellState();
+  const DriverShell({
+    super.key,
+    required this.user,
+    required this.api,
+    required this.onLogout,
+  });
+
+  final Map<String, dynamic> user;
+  final ApiService api;
+  final VoidCallback onLogout;
+
+  @override
+  State<DriverShell> createState() => _DriverShellState();
 }
+
 class _DriverShellState extends State<DriverShell> {
-  int _index = 0; Map<String, dynamic>? _route;
-  @override Widget build(BuildContext context) {
-    final pages = [_Trips(api: widget.api, id: widget.user['id'] as int, select: (r) => setState(() {_route = r; _index = 1;})), _Trip(api: widget.api, route: _route), _Verify(api: widget.api), _Incident(api: widget.api), _Profile(user: widget.user, logout: widget.onLogout)];
-    const labels = [(Icons.route_rounded,'Chuyến xe'),(Icons.map_rounded,'Tuyến chạy'),(Icons.qr_code_scanner_rounded,'Quét vé'),(Icons.campaign_rounded,'Điều phối'),(Icons.person_rounded,'Hồ sơ')];
-    return Scaffold(body: IndexedStack(index: _index, children: pages), bottomNavigationBar: NavigationBar(selectedIndex: _index, onDestinationSelected: (v) => setState(() => _index=v), destinations: [for(final e in labels) NavigationDestination(icon: Icon(e.$1),label:e.$2)]));
+  int _currentIndex = 0;
+  Map<String, dynamic>? _selectedRoute;
+
+  void _onSelectRouteFromHome(Map<String, dynamic> route) {
+    setState(() {
+      _selectedRoute = route;
+      _currentIndex = 1; // Switch to Map tab
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = [
+      DriverHomeTab(
+        user: widget.user,
+        api: widget.api,
+        onSelectRoute: _onSelectRouteFromHome,
+      ),
+      DriverMapTab(
+        api: widget.api,
+        initialRoute: _selectedRoute,
+      ),
+      DriverQrTab(
+        api: widget.api,
+      ),
+      DriverAlertsTab(
+        api: widget.api,
+      ),
+      DriverProfileTab(
+        user: widget.user,
+        onLogout: widget.onLogout,
+      ),
+    ];
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 12,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+          backgroundColor: Colors.white,
+          indicatorColor: AppColors.teal.withOpacity(0.15),
+          elevation: 8,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_rounded, color: AppColors.teal),
+              label: 'Trang chủ',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.map_outlined),
+              selectedIcon: Icon(Icons.map_rounded, color: AppColors.teal),
+              label: 'Route',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.qr_code_scanner_outlined),
+              selectedIcon: Icon(Icons.qr_code_scanner_rounded, color: AppColors.teal),
+              label: 'Scan',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.notifications_outlined),
+              selectedIcon: Icon(Icons.notifications_rounded, color: AppColors.teal),
+              label: 'Alerts',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.person_outline_rounded),
+              selectedIcon: Icon(Icons.person_rounded, color: AppColors.teal),
+              label: 'Profile',
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
-class _Trips extends StatefulWidget { const _Trips({required this.api,required this.id,required this.select}); final ApiService api;final int id;final ValueChanged<Map<String,dynamic>> select;@override State<_Trips> createState()=>_TripsState(); }
-class _TripsState extends State<_Trips>{ late Future<List<dynamic>> future;@override void initState(){super.initState();future=widget.api.fetchDriverRoutes(widget.id);} @override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('Chuyến xe hôm nay'),actions:[IconButton(icon:const Icon(Icons.refresh),onPressed:()=>setState(()=>future=widget.api.fetchDriverRoutes(widget.id)))]),body:FutureBuilder<List<dynamic>>(future:future,builder:(c,s){if(s.connectionState!=ConnectionState.done)return const Center(child:CircularProgressIndicator());if(s.hasError)return Center(child:Text('Không tải được lịch trình: ${s.error}'));final items=s.data??[];if(items.isEmpty)return const Center(child:Text('Hôm nay chưa có chuyến được phân công.'));return ListView.builder(padding:const EdgeInsets.all(16),itemCount:items.length,itemBuilder:(_,i){final r=Map<String,dynamic>.from(items[i] as Map);return Card(child:ListTile(onTap:()=>widget.select(r),leading:const CircleAvatar(child:Icon(Icons.directions_bus)),title:Text('Tuyến #${r['id']}'),subtitle:Text('${r['total_distance']} km · ${(r['stops'] as List?)?.length??0} trạm'),trailing:Chip(label:Text('${r['status']}'))));});}));}
-class _Trip extends StatefulWidget{const _Trip({required this.api,required this.route});final ApiService api;final Map<String,dynamic>? route;@override State<_Trip> createState()=>_TripState();}
-class _TripState extends State<_Trip>{bool busy=false;String? state;Future<void> go()async{final r=widget.route;if(r==null)return;setState(()=>busy=true);try{final value=(state??r['status'])=='in_progress'?await widget.api.endRoute(r['id']):await widget.api.startRoute(r['id']);setState(()=>state=value['status']);}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$e')));}finally{if(mounted)setState(()=>busy=false);}}@override Widget build(BuildContext c){final r=widget.route;if(r==null)return const Scaffold(body:Center(child:Text('Chọn một chuyến ở tab Chuyến xe để bắt đầu.')));final status=state??r['status'];final stops=(r['stops']as List?)??[];return Scaffold(appBar:AppBar(title:Text('Tuyến #${r['id']}')),body:ListView(padding:const EdgeInsets.all(16),children:[Card(child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Trạng thái: $status',style:const TextStyle(fontSize:18,fontWeight:FontWeight.bold)),const SizedBox(height:12),FilledButton.icon(onPressed:busy||status=='completed'?null:go,icon:Icon(status=='in_progress'?Icons.stop:Icons.play_arrow),label:Text(status=='in_progress'?'Kết thúc chuyến':'Bắt đầu chuyến'))]))),const SizedBox(height:12),const Text('Danh sách trạm',style:TextStyle(fontWeight:FontWeight.bold)),...stops.map((raw){final s=Map<String,dynamic>.from(raw as Map);return ListTile(leading:const Icon(Icons.location_on_outlined),title:Text(s['location']?['name']?.toString()??'Trạm #${s['location_id']}'),subtitle:Text('Thứ tự ${s['stop_order']} · ${s['arrival_time']??'Chưa có giờ'}'));})]));}}
-class _Verify extends StatefulWidget{const _Verify({required this.api});final ApiService api;@override State<_Verify> createState()=>_VerifyState();}class _VerifyState extends State<_Verify>{final code=TextEditingController();bool busy=false;@override void dispose(){code.dispose();super.dispose();}Future<void> verify()async{if(code.text.trim().isEmpty)return;setState(()=>busy=true);try{final t=await widget.api.verifyTicket(code.text.trim());code.clear();if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Xác nhận vé #${t['id']} thành công.')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Không xác thực được vé: $e')));}finally{if(mounted)setState(()=>busy=false);}}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('Xác nhận vé')),body:Padding(padding:const EdgeInsets.all(24),child:Column(children:[const Icon(Icons.qr_code_scanner_rounded,size:80,color:AppColors.teal),const SizedBox(height:16),const Text('Dán nội dung mã QR của sinh viên để xác nhận lên xe.',textAlign:TextAlign.center),const SizedBox(height:20),TextField(controller:code,decoration:const InputDecoration(labelText:'Mã QR vé',border:OutlineInputBorder())),const SizedBox(height:12),FilledButton(onPressed:busy?null:verify,child:Text(busy?'Đang kiểm tra…':'Xác nhận vé'))])));}
-class _Incident extends StatefulWidget{const _Incident({required this.api});final ApiService api;@override State<_Incident> createState()=>_IncidentState();}class _IncidentState extends State<_Incident>{Future<void> report()async{final title=TextEditingController();final detail=TextEditingController();final ok=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(title:const Text('Báo sự cố'),content:Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:title,decoration:const InputDecoration(labelText:'Tiêu đề')),TextField(controller:detail,decoration:const InputDecoration(labelText:'Mô tả'))]),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Huỷ')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Gửi'))]));if(ok==true&&title.text.trim().isNotEmpty){try{await widget.api.reportIncident(title:title.text.trim(),description:detail.text.trim());if(mounted)ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Đã gửi báo cáo sự cố.')));}catch(e){if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$e')));}}title.dispose();detail.dispose();}@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('Điều phối')),body:Center(child:FilledButton.icon(onPressed:report,icon:const Icon(Icons.warning_amber_rounded),label:const Text('Báo sự cố nhanh'))));}
-class _Profile extends StatelessWidget{const _Profile({required this.user,required this.logout});final Map<String,dynamic> user;final VoidCallback logout;@override Widget build(BuildContext c)=>Scaffold(appBar:AppBar(title:const Text('Hồ sơ tài xế')),body:Padding(padding:const EdgeInsets.all(24),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[const CircleAvatar(radius:38,child:Icon(Icons.person,size:42)),const SizedBox(height:16),Text('${user['full_name']??user['username']}',textAlign:TextAlign.center,style:const TextStyle(fontSize:20,fontWeight:FontWeight.bold)),const Spacer(),FilledButton.tonalIcon(onPressed:logout,icon:const Icon(Icons.logout),label:const Text('Đăng xuất'))])));}

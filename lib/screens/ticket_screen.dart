@@ -375,13 +375,51 @@ class _TicketScreenState extends State<TicketScreen>
       return const Center(child: CircularProgressIndicator(color: AppColors.teal));
     }
     if (_routeError != null) {
+      final is401 = _routeError!.contains('401');
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text('Lỗi tải dữ liệu: $_routeError', style: const TextStyle(color: Colors.red)),
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                is401 ? Icons.lock_outline_rounded : Icons.error_outline_rounded,
+                size: 54,
+                color: is401 ? AppColors.orange : Colors.red,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                is401
+                    ? 'Vui lòng đăng nhập tài khoản Sinh viên để mua vé và xem danh sách tuyến.'
+                    : 'Lỗi tải dữ liệu: $_routeError',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _loadingRoutes = true;
+                    _routeError = null;
+                  });
+                  _loadRoutes();
+                  _loadTickets();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.teal,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+                ),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Thử tải lại', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
         ),
       );
     }
+
     if (_routes.isEmpty) {
       return const Center(child: Text('Không có tuyến đường khả dụng.', style: TextStyle(color: AppColors.textMuted)));
     }

@@ -2,9 +2,8 @@ from typing import List, Optional
 from datetime import date
 from sqlalchemy.orm import Session
 from app.models.route import Route, RouteStop, RouteStatus
-
-# BỔ SUNG IMPORT Location TẠI ĐÂY
 from app.models.location import Location
+from app.models.vehicle import Vehicle
 
 def get_active_routes(db: Session, location_name: Optional[str] = None) -> List[Route]:
     # Lấy các tuyến đang active (pending hoặc in_progress)

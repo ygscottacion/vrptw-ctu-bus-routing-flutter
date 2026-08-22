@@ -21,6 +21,10 @@ def create_tickets(db: Session, user_id: int, quantity: int = 1) -> List[Ticket]
         db.refresh(ticket)
     return tickets
 
+def create_ticket(db: Session, user_id: int) -> Ticket:
+    return create_tickets(db=db, user_id=user_id, quantity=1)[0]
+
+
 def get_user_tickets(db: Session, user_id: int) -> List[Ticket]:
     # Chỉ lấy vé ACTIVE (chưa dùng) VÀ route_id == None (chưa gán tuyến)
     return db.query(Ticket).filter(
