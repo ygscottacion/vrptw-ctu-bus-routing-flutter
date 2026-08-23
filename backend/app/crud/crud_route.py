@@ -2,6 +2,8 @@ from typing import List, Optional
 from datetime import date
 from sqlalchemy.orm import Session
 from app.models.route import Route, RouteStop, RouteStatus
+from app.models.vehicle import Vehicle, VehicleStatus  # THÊM
+
 
 def create_route(db: Session, vehicle_id: int, route_date: date, total_distance: float, stops_data: List[dict]) -> Route:
     db_route = Route(
@@ -26,13 +28,16 @@ def create_route(db: Session, vehicle_id: int, route_date: date, total_distance:
     db.refresh(db_route)
     return db_route
 
+
 def get_route_by_id(db: Session, route_id: int) -> Optional[Route]:
     return db.query(Route).filter(Route.id == route_id).first()
+
 
 def get_routes_by_ids(db: Session, route_ids: List[int]) -> List[Route]:
     if not route_ids:
         return []
     return db.query(Route).filter(Route.id.in_(route_ids)).all()
+
 
 def get_routes_by_driver(db: Session, driver_id: int) -> List[Route]:
     from app.models.vehicle import Vehicle
@@ -42,6 +47,16 @@ def get_routes_by_driver(db: Session, driver_id: int) -> List[Route]:
 def update_route_status(db: Session, route: Route, status: RouteStatus) -> Route:
     """Persist a driver transition for a route that was already assigned."""
     route.status = status
+
+    if route.vehicle_id:
+        vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
+        if vehicle and vehicle.status != VehicleStatus.BROKEN:
+            if status == RouteStatus.IN_PROGRESS:
+                vehicle.status = VehicleStatus.RUNNING
+            elif status == RouteStatus.COMPLETED:
+                vehicle.status = VehicleStatus.IDLE
+            db.add(vehicle)
+
     db.add(route)
     db.commit()
     db.refresh(route)

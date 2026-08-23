@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from app.api.v1.endpoints import settings
 from app.api.v1.endpoints import auth, users, locations, vehicles, routes, tickets, incidents, reports, websocket, bookings, reviews
 
 api_router = APIRouter()
@@ -13,3 +14,4 @@ api_router.include_router(reports.router, prefix="/reports", tags=["Admin Dashbo
 api_router.include_router(bookings.router, prefix="/bookings", tags=["Pre-booking Routes"])
 api_router.include_router(reviews.router, prefix="/reviews", tags=["Trip Reviews & Feedback"])
 api_router.include_router(websocket.router, tags=["Realtime WebSocket Broadcast"])
+api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
