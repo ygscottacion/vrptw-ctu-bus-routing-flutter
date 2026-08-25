@@ -35,6 +35,14 @@ def update_location(db: Session, db_obj: Location, location_in: LocationUpdate) 
 def delete_location(db: Session, location_id: int) -> Optional[Location]:
     db_obj = db.query(Location).filter(Location.id == location_id).first()
     if db_obj:
+        from app.models.route import Route, RouteStop
+        from app.models.vehicle import Vehicle
+        
+        # Xóa các chuyến xe có lộ trình đi ngang qua trạm này
+        affected_routes = db.query(Route).join(RouteStop).filter(RouteStop.location_id == location_id).all()
+        for route in affected_routes:
+            db.delete(route)
+            
         db.delete(db_obj)
         db.commit()
     return db_obj

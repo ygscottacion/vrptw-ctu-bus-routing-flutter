@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     # Database Settings
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "123456"
+    POSTGRES_PASSWORD: str = "loiloizz1234"
     POSTGRES_DB: str = "ctu_bus_db"
     POSTGRES_PORT: int = 5432
     SQLALCHEMY_DATABASE_URI: Optional[str] = None

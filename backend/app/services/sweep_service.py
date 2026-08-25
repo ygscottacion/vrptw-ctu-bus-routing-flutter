@@ -65,15 +65,10 @@ class SweepClusteringService:
         for loc in sorted_locations:
             loc_demand = loc.get("demand", 1)
 
-            # Nếu thêm điểm này mà vượt quá capacity của xe hiện tại -> chuyển sang xe tiếp theo
             if current_cluster["current_demand"] + loc_demand > current_cluster["capacity"]:
-                clusters.append(current_cluster)
-                vehicle_index += 1
-
-                if vehicle_index >= len(vehicles):
-                    # Hết xe buýt có sẵn -> gán vào xe cuối cùng hoặc xử lý ngoại lệ
-                    current_cluster = clusters[-1]
-                else:
+                if vehicle_index + 1 < len(vehicles):
+                    clusters.append(current_cluster)
+                    vehicle_index += 1
                     current_vehicle = vehicles[vehicle_index]
                     current_cluster = {
                         "vehicle_id": current_vehicle["id"],
@@ -81,6 +76,9 @@ class SweepClusteringService:
                         "current_demand": 0,
                         "stops": []
                     }
+                else:
+                    # Nếu đã hết xe buýt, đành nhồi nhét vào xe cuối cùng
+                    pass
 
             current_cluster["stops"].append(loc)
             current_cluster["current_demand"] += loc_demand

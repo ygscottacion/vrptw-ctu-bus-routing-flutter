@@ -42,7 +42,7 @@ class VRPTWSolverService:
                 "vehicle_id": cluster["vehicle_id"],
                 "total_demand": cluster["current_demand"],
                 "total_distance_km": round(eval_res.distance, 2),
-                "ordered_stops": optimized_stops
+                "ordered_stops": [depot] + optimized_stops + [depot]
             })
 
         return final_routes

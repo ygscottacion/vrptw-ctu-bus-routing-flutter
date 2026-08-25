@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import IntegrityError
 from app.core.config import settings
 from app.api.v1.api import api_router
 
@@ -9,6 +11,13 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+@app.exception_handler(IntegrityError)
+async def sqlalchemy_integrity_error_handler(request: Request, exc: IntegrityError):
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Dữ liệu đã tồn tại hoặc vi phạm ràng buộc (Ví dụ: Trùng biển số xe)."},
+    )
 
 # Set all CORS enabled origins
 app.add_middleware(
