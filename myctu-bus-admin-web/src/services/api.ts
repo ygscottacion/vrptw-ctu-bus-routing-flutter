@@ -1,4 +1,4 @@
-export const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1';
+export const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1';
 
 export const WS_URL = BASE_URL.replace(/^http/, 'ws').replace(/\/api\/v1$/, '/api/v1/ws/bus-locations');
 
@@ -30,7 +30,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.detail || `Lỗi ${response.status}`);
+    const detailMsg = Array.isArray(data.detail) ? JSON.stringify(data.detail) : data.detail;
+    throw new Error(detailMsg || `Lỗi ${response.status}`);
   }
 
   return response.status === 204 ? (undefined as T) : (response.json() as Promise<T>);
