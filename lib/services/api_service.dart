@@ -25,12 +25,18 @@ class ApiService {
         _authToken = data['access_token'];
         final user = await fetchMe();
         if (user == null) {
-          return {'success': false, 'message': 'Không thể tải thông tin tài khoản'};
+          return {
+            'success': false,
+            'message': 'Không thể tải thông tin tài khoản'
+          };
         }
         return {'success': true, 'token': _authToken, 'user': user};
       } else {
         final error = json.decode(response.body);
-        return {'success': false, 'message': error['detail'] ?? 'Đăng nhập thất bại'};
+        return {
+          'success': false,
+          'message': error['detail'] ?? 'Đăng nhập thất bại'
+        };
       }
     } catch (e) {
       return {'success': false, 'message': 'Lỗi kết nối Server: $e'};
@@ -59,7 +65,9 @@ class ApiService {
     }
 
     try {
-      final response = await http.get(url, headers: headers).timeout(const Duration(seconds: 4));
+      final response = await http
+          .get(url, headers: headers)
+          .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         return json.decode(response.body) as List<dynamic>;
       } else {
@@ -85,7 +93,8 @@ class ApiService {
       if (response.statusCode == 200) {
         return json.decode(response.body) as List<dynamic>;
       } else {
-        throw Exception('Không thể tải danh sách xe buýt: ${response.statusCode}');
+        throw Exception(
+            'Không thể tải danh sách xe buýt: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;
@@ -94,7 +103,8 @@ class ApiService {
 
   /// 4. Lấy lịch trình tuyến xe của Tài Xế
   Future<List<dynamic>> fetchDriverRoutes(int driverId) async {
-    final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesDriver}$driverId');
+    final url =
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesDriver}$driverId');
     final headers = <String, String>{
       'Content-Type': 'application/json',
     };
@@ -107,7 +117,8 @@ class ApiService {
       if (response.statusCode == 200) {
         return json.decode(response.body) as List<dynamic>;
       } else {
-        throw Exception('Không thể tải lịch trình tài xế: ${response.statusCode}');
+        throw Exception(
+            'Không thể tải lịch trình tài xế: ${response.statusCode}');
       }
     } catch (e) {
       rethrow;
@@ -116,7 +127,9 @@ class ApiService {
 
   /// 5. Lấy danh sách tuyến khả dụng cho hành khách
   Future<List<dynamic>> fetchActiveRoutes() async {
-    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesActive}'), headers: _headers);
+    final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesActive}'),
+        headers: _headers);
     if (response.statusCode == 200) {
       return json.decode(response.body) as List<dynamic>;
     } else {
@@ -125,41 +138,88 @@ class ApiService {
   }
 
   Map<String, String> get _headers => {
-    'Content-Type': 'application/json',
-    if (_authToken != null) 'Authorization': 'Bearer $_authToken',
-  };
+        'Content-Type': 'application/json',
+        if (_authToken != null) 'Authorization': 'Bearer $_authToken',
+      };
 
   Future<List<dynamic>> fetchMyTickets() async {
-    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}${ApiConfig.ticketsMe}'), headers: _headers);
+    final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.ticketsMe}'),
+        headers: _headers);
     if (response.statusCode != 200) throw Exception(_message(response));
     return json.decode(response.body) as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> bookTicket(int routeId) => _post(ApiConfig.ticketsBook, {'route_id': routeId});
+  /// One ticket is one reserved direction for a chosen service day and stop.
+  Future<Map<String, dynamic>> bookTicket({
+    required int pickupLocationId,
+    required DateTime serviceDate,
+    required String sessionId,
+    required String tripType,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.ticketsBuy}'),
+      headers: _headers,
+      body: json.encode({
+        'pickup_location_id': pickupLocationId,
+        'service_date': serviceDate.toIso8601String().split('T').first,
+        'session_id': sessionId,
+        'trip_type': tripType,
+      }),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_message(response));
+    }
+    final data = json.decode(response.body) as List<dynamic>;
+    return Map<String, dynamic>.from(data.first as Map);
+  }
 
-  Future<Map<String, dynamic>> verifyTicket(String qrCode) => _post(ApiConfig.ticketsVerifyQr, {'qr_code': qrCode});
+  Future<Map<String, dynamic>> fetchRouteDetails(int routeId) async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routeDetails}$routeId'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return Map<String, dynamic>.from(json.decode(response.body) as Map);
+  }
 
-  Future<Map<String, dynamic>> reportIncident({required String title, String? description, int? vehicleId}) =>
-      _post(ApiConfig.incidents, {'title': title, if (description != null) 'description': description, if (vehicleId != null) 'vehicle_id': vehicleId});
+  Future<Map<String, dynamic>> verifyTicket(String qrCode) =>
+      _post(ApiConfig.ticketsVerifyQr, {'qr_code': qrCode});
 
-  Future<Map<String, dynamic>> startRoute(int routeId) => _patch('/routes/$routeId/start');
-  Future<Map<String, dynamic>> endRoute(int routeId) => _patch('/routes/$routeId/end');
+  Future<Map<String, dynamic>> reportIncident(
+          {required String title, String? description, int? vehicleId}) =>
+      _post(ApiConfig.incidents, {
+        'title': title,
+        if (description != null) 'description': description,
+        if (vehicleId != null) 'vehicle_id': vehicleId
+      });
 
-  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
-    final response = await http.post(Uri.parse('${ApiConfig.baseUrl}$path'), headers: _headers, body: json.encode(body));
-    if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(_message(response));
+  Future<Map<String, dynamic>> startRoute(int routeId) =>
+      _patch('/routes/$routeId/start');
+  Future<Map<String, dynamic>> endRoute(int routeId) =>
+      _patch('/routes/$routeId/end');
+
+  Future<Map<String, dynamic>> _post(
+      String path, Map<String, dynamic> body) async {
+    final response = await http.post(Uri.parse('${ApiConfig.baseUrl}$path'),
+        headers: _headers, body: json.encode(body));
+    if (response.statusCode < 200 || response.statusCode >= 300)
+      throw Exception(_message(response));
     return json.decode(response.body) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> _patch(String path) async {
-    final response = await http.patch(Uri.parse('${ApiConfig.baseUrl}$path'), headers: _headers);
-    if (response.statusCode < 200 || response.statusCode >= 300) throw Exception(_message(response));
+    final response = await http.patch(Uri.parse('${ApiConfig.baseUrl}$path'),
+        headers: _headers);
+    if (response.statusCode < 200 || response.statusCode >= 300)
+      throw Exception(_message(response));
     return json.decode(response.body) as Map<String, dynamic>;
   }
 
   String _message(http.Response response) {
     try {
-      return (json.decode(response.body) as Map<String, dynamic>)['detail']?.toString() ??
+      return (json.decode(response.body) as Map<String, dynamic>)['detail']
+              ?.toString() ??
           'Yêu cầu thất bại (${response.statusCode})';
     } catch (_) {
       return 'Yêu cầu thất bại (${response.statusCode})';

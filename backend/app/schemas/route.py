@@ -30,6 +30,8 @@ class RouteResponse(BaseModel):
 class RouteGenerateRequest(BaseModel):
     date: date
     depot_location_id: int
+    session_id: str = "MORNING_1"
+    trip_type: str = "pickup"
 
 class RouteGenerationAcceptedResponse(BaseModel):
     """Phản hồi tức thì khi job sinh lộ trình được nhận và chạy nền (202 Accepted)."""

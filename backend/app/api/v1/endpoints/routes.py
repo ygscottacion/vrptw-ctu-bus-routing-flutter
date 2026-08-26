@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, time, timedelta
 
 from typing import Any, List, Optional
 # BỔ SUNG: Đã thêm Query vào dòng import này
@@ -7,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.core.database import SessionLocal
-from app.crud import crud_route
+from app.crud import crud_route, crud_ticket
 from app.models.location import Location
 from app.models.route import RouteStatus
 from app.models.user import User, UserRole
@@ -20,6 +21,7 @@ from app.schemas.route import (
 )
 from app.services.job_store import JobStatus, route_job_store
 from app.services.vrptw_solver import VRPTWSolverService
+from app.services.student_routing.schemas import SessionId, TripType
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,8 @@ def _run_route_generation_job(
     locations_dict: List[dict],
     vehicles_dict: List[dict],
     route_date,
+    session_id: str,
+    trip_type: str,
 ) -> None:
     """
     Hàm chạy nền (được fastapi.BackgroundTasks gọi SAU KHI response 202 đã trả về
@@ -64,7 +68,10 @@ def _run_route_generation_job(
     db: Session = SessionLocal()
     try:
         solver = VRPTWSolverService()
-        results = solver.solve(depot_dict, locations_dict, vehicles_dict)
+        results = solver.solve(
+            depot_dict, locations_dict, vehicles_dict,
+            session_id=SessionId(session_id), trip_type=TripType(trip_type.upper()),
+        )
 
         created_route_ids: List[int] = []
         for res in results:
@@ -76,6 +83,13 @@ def _run_route_generation_job(
                 stops_data=res["ordered_stops"],
             )
             created_route_ids.append(route_obj.id)
+            stop_ids = {int(stop["id"]) for stop in res["ordered_stops"]}
+            for ticket in crud_ticket.get_unassigned_tickets_for_run(
+                db, route_date, session_id, trip_type
+            ):
+                if ticket.pickup_location_id in stop_ids:
+                    ticket.route_id = route_obj.id
+            db.commit()
 
         route_job_store.mark_completed(job_id, route_ids=created_route_ids)
     except Exception as exc:  # noqa: BLE001 - ghi lại lỗi để client poll thấy được
@@ -116,7 +130,26 @@ def generate_routes(
     if not depot_loc:
         raise HTTPException(status_code=404, detail="Depot location not found")
 
-    locations_db = db.query(Location).filter(Location.id != request.depot_location_id).all()
+    if request.trip_type not in {"pickup", "dropoff"}:
+        raise HTTPException(status_code=422, detail="trip_type phải là pickup hoặc dropoff.")
+    if request.session_id not in {item.value for item in SessionId}:
+        raise HTTPException(status_code=422, detail="session_id không hợp lệ.")
+    cutoff = datetime.combine(request.date - timedelta(days=1), time(hour=22))
+    if datetime.now() < cutoff:
+        raise HTTPException(
+            status_code=400,
+            detail="Chỉ được sinh tuyến sau 22:00 của ngày trước ngày chạy.",
+        )
+
+    reserved_tickets = crud_ticket.get_unassigned_tickets_for_run(
+        db, request.date, request.session_id, request.trip_type
+    )
+    if not reserved_tickets:
+        raise HTTPException(status_code=400, detail="Không có vé lượt đã chốt cho ca này.")
+    demand_by_location = {}
+    for ticket in reserved_tickets:
+        demand_by_location[ticket.pickup_location_id] = demand_by_location.get(ticket.pickup_location_id, 0) + 1
+    locations_db = db.query(Location).filter(Location.id.in_(demand_by_location.keys())).all()
     vehicles_db = db.query(Vehicle).all()
 
     if not vehicles_db:
@@ -124,7 +157,7 @@ def generate_routes(
 
     depot_dict = {"id": depot_loc.id, "name": depot_loc.name, "latitude": depot_loc.latitude, "longitude": depot_loc.longitude}
     locations_dict = [
-        {"id": loc.id, "name": loc.name, "latitude": loc.latitude, "longitude": loc.longitude, "demand": loc.demand}
+        {"id": loc.id, "name": loc.name, "latitude": loc.latitude, "longitude": loc.longitude, "demand": demand_by_location[loc.id]}
         for loc in locations_db
     ]
     vehicles_dict = [
@@ -141,6 +174,8 @@ def generate_routes(
         locations_dict,
         vehicles_dict,
         request.date,
+        request.session_id,
+        request.trip_type,
     )
 
     return RouteGenerationAcceptedResponse(
@@ -178,7 +213,7 @@ def get_route_generation_status(
     )
 
 
-@router.get("/{route_id}", response_model=RouteResponse)
+@router.get("/details/{route_id}", response_model=RouteResponse)
 def get_route_details(
     route_id: int,
     db: Session = Depends(deps.get_db),
@@ -212,8 +247,6 @@ def start_route(
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
     _ensure_route_driver(route, current_driver)
-    if route.status == RouteStatus.COMPLETED:
-        raise HTTPException(status_code=409, detail="Completed route cannot be started")
     return crud_route.update_route_status(db, route, RouteStatus.IN_PROGRESS)
 
 
@@ -227,8 +260,6 @@ def end_route(
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
     _ensure_route_driver(route, current_driver)
-    if route.status != RouteStatus.IN_PROGRESS:
-        raise HTTPException(status_code=409, detail="Only an in-progress route can be completed")
     return crud_route.update_route_status(db, route, RouteStatus.COMPLETED)
 
 

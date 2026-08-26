@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -6,466 +5,351 @@ import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 
 class DriverMapTab extends StatefulWidget {
-  const DriverMapTab({
-    super.key,
-    required this.api,
-    this.initialRoute,
-  });
-
+  const DriverMapTab({super.key, required this.api, this.initialRoute});
   final ApiService api;
   final Map<String, dynamic>? initialRoute;
-
   @override
   State<DriverMapTab> createState() => _DriverMapTabState();
 }
 
-class _DriverMapTabState extends State<DriverMapTab> {
-  late MapController _mapController;
-  String _selectedFilter = 'all';
-  bool _isBusy = false;
-  String? _tripStatus;
-  
-  // Realtime simulated bus movement
-  LatLng _busPos = const LatLng(10.0299, 105.7684); // Can Tho CTU Depot
-  double _busLat = 10.0299;
-  double _busStep = 0.00025;
-  Timer? _gpsTimer;
-
-  static const List<_MapStop> _routeStops = [
-    _MapStop(LatLng(10.0299, 105.7684), 'Trạm Depot - ĐH Cần Thơ (Khu II)', '08:00 AM', 'passed'),
-    _MapStop(LatLng(10.0342, 105.7876), 'Trạm 1 - Bến Ninh Kiều', '08:12 AM', 'active'),
-    _MapStop(LatLng(10.0031, 105.7482), 'Trạm 2 - Chợ Cái Răng', '08:25 AM', 'upcoming'),
-    _MapStop(LatLng(10.0461, 105.7891), 'Trạm 3 - Công viên Sông Hậu', '08:38 AM', 'upcoming'),
-    _MapStop(LatLng(10.0402, 105.7621), 'Trạm 4 - Lotte Mart Cần Thơ', '08:50 AM', 'upcoming'),
-  ];
+class _DriverMapTabState extends State<DriverMapTab>
+    with SingleTickerProviderStateMixin {
+  final _map = MapController();
+  late TabController _tabs;
+  Map<String, dynamic>? _route;
+  List<_Stop> _stops = [];
+  bool _loading = true, _busy = false;
+  String? _error;
+  int get _id => int.tryParse(_route?['id']?.toString() ?? '') ?? 0;
+  String get _status => _route?['status']?.toString() ?? 'pending';
+  LatLng get _center =>
+      _stops.isEmpty ? const LatLng(10.0302, 105.7721) : _stops.first.point;
 
   @override
   void initState() {
     super.initState();
-    _mapController = MapController();
-    _tripStatus = widget.initialRoute?['status']?.toString() ?? 'pending';
-
-    // Start simulated GPS timer for driver moving on map
-    _gpsTimer = Timer.periodic(const Duration(milliseconds: 1500), (_) {
-      if (!mounted || _tripStatus != 'in_progress') return;
-      setState(() {
-        _busLat += _busStep;
-        if (_busLat > 10.0460) _busStep = -0.00025;
-        if (_busLat < 10.0290) _busStep = 0.00025;
-        _busPos = LatLng(_busLat, 105.7684 + (_busLat - 10.0299) * 0.8);
-      });
-    });
+    _tabs = TabController(length: 3, vsync: this);
+    _route = widget.initialRoute;
+    _load();
   }
 
   @override
   void dispose() {
-    _gpsTimer?.cancel();
-    _mapController.dispose();
+    _tabs.dispose();
+    _map.dispose();
     super.dispose();
   }
 
-  Future<void> _handleTripAction() async {
-    final routeId = widget.initialRoute?['id'] as int? ?? 1;
-    setState(() => _isBusy = true);
+  Future<void> _load() async {
+    if (_id == 0) {
+      setState(() {
+        _loading = false;
+        _error = 'Chưa có tuyến được phân công.';
+      });
+      return;
+    }
     try {
-      if (_tripStatus == 'in_progress') {
-        final res = await widget.api.endRoute(routeId);
-        setState(() => _tripStatus = res['status'] ?? 'completed');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đã hoàn thành chuyến xe thành công!'),
-              backgroundColor: AppColors.teal,
-            ),
-          );
-        }
-      } else {
-        final res = await widget.api.startRoute(routeId);
-        setState(() => _tripStatus = res['status'] ?? 'in_progress');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đã BẮT ĐẦU chuyến xe! Tọa độ GPS đang cập nhật.'),
-              backgroundColor: AppColors.teal,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi cập nhật chuyến: $e')),
+      final route = await widget.api.fetchRouteDetails(_id);
+      final stops = (route['stops'] as List<dynamic>? ?? []).map((raw) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final loc = Map<String, dynamic>.from(item['location'] as Map? ?? {});
+        final date = DateTime.tryParse(item['arrival_time']?.toString() ?? '')
+            ?.toLocal();
+        return _Stop(
+          loc['name']?.toString() ?? 'Trạm ${item['stop_order']}',
+          LatLng((loc['latitude'] as num?)?.toDouble() ?? 10.0302,
+              (loc['longitude'] as num?)?.toDouble() ?? 105.7721),
+          date == null
+              ? 'Đang cập nhật'
+              : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
+          (item['stop_order'] as num?)?.toInt() ?? 0,
         );
-      }
+      }).toList()
+        ..sort((a, b) => a.order.compareTo(b.order));
+      if (mounted)
+        setState(() {
+          _route = route;
+          _stops = stops;
+          _error = null;
+        });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Không thể tải tuyến: $e');
     } finally {
-      if (mounted) setState(() => _isBusy = false);
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _toggle() async {
+    if (_id == 0 || _status == 'completed') return;
+    setState(() => _busy = true);
+    try {
+      final route = _status == 'in_progress'
+          ? await widget.api.endRoute(_id)
+          : await widget.api.startRoute(_id);
+      if (mounted) setState(() => _route = route);
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final routeId = widget.initialRoute?['id']?.toString() ?? '1';
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6FAFA),
-      appBar: AppBar(
-        backgroundColor: AppColors.teal,
-        title: Text('Tuyến xe #$routeId & Bản đồ realtime'),
-        elevation: 1,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.my_location_rounded),
-            onPressed: () {
-              _mapController.move(_busPos, 14.5);
-            },
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          // FlutterMap Area
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _busPos,
-              initialZoom: 14.0,
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.myctubus.app',
-              ),
-              // Route Polyline
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: _routeStops.map((s) => s.pos).toList(),
-                    color: AppColors.teal,
-                    strokeWidth: 4.5,
-                  ),
-                ],
-              ),
-              // Stop Markers
-              MarkerLayer(
-                markers: [
-                  for (final stop in _routeStops)
-                    Marker(
-                      point: stop.pos,
-                      width: 40,
-                      height: 40,
-                      child: Tooltip(
-                        message: stop.name,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: stop.status == 'active'
-                                ? Colors.orangeAccent
-                                : (stop.status == 'passed'
-                                    ? Colors.grey
-                                    : AppColors.teal),
-                            border: Border.all(color: Colors.white, width: 2),
-                            boxShadow: const [
-                              BoxShadow(color: Colors.black26, blurRadius: 4),
-                            ],
-                          ),
-                          child: Icon(
-                            stop.status == 'active'
-                                ? Icons.location_on
-                                : Icons.directions_bus_filled,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                    ),
-                  // Realtime Bus Marker
-                  Marker(
-                    point: _busPos,
-                    width: 50,
-                    height: 50,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                        border: Border.all(color: AppColors.teal, width: 3),
-                        boxShadow: const [
-                          BoxShadow(color: Colors.black38, blurRadius: 8),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.directions_bus_rounded,
-                          color: AppColors.teal,
-                          size: 28,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // Top Route Filter Pills
-          Positioned(
-            top: 12,
-            left: 12,
-            right: 12,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _filterChip('all', 'Tất cả'),
-                  const SizedBox(width: 8),
-                  _filterChip('r1', 'Tuyến 1 - Khu II'),
-                  const SizedBox(width: 8),
-                  _filterChip('r2', 'Tuyến 2 - Bến Ninh Kiều'),
-                  const SizedBox(width: 8),
-                  _filterChip('r3', 'Tuyến 3 - Hòa An'),
-                ],
-              ),
-            ),
-          ),
-
-          // Bottom Sheet: Control & Stop Timeline
-          DraggableScrollableSheet(
-            initialChildSize: 0.38,
-            minChildSize: 0.18,
-            maxChildSize: 0.70,
-            builder: (context, scrollController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 16,
-                      offset: Offset(0, -4),
-                    ),
-                  ],
-                ),
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  children: [
-                    // Handle Bar
-                    Center(
-                      child: Container(
-                        width: 44,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Trip Status & Action Button
-                    Row(
+  Widget build(BuildContext context) => Scaffold(
+      body: _loading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.teal))
+          : _error != null
+              ? Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.route_outlined,
+                      size: 52, color: AppColors.teal),
+                  const SizedBox(height: 12),
+                  Text(_error!),
+                  TextButton(onPressed: _load, child: const Text('Tải lại'))
+                ]))
+              : Stack(children: [
+                  FlutterMap(
+                      mapController: _map,
+                      options:
+                          MapOptions(initialCenter: _center, initialZoom: 13.5),
                       children: [
-                        Expanded(
-                          child: Column(
+                        TileLayer(
+                            urlTemplate:
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.ctu.myctubus'),
+                        if (_stops.length > 1)
+                          PolylineLayer(polylines: [
+                            Polyline(
+                                points: _stops.map((s) => s.point).toList(),
+                                color: const Color(0xFFFF5D3D),
+                                strokeWidth: 4)
+                          ]),
+                        MarkerLayer(markers: [
+                          for (var i = 0; i < _stops.length; i++)
+                            Marker(
+                                point: _stops[i].point,
+                                width: 38,
+                                height: 38,
+                                child: _Pin(
+                                    active: _status == 'in_progress' && i == 0))
+                        ]),
+                      ]),
+                  SafeArea(
+                      child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Row(children: [
+                            _circle(Icons.arrow_back,
+                                () => Navigator.maybePop(context)),
+                            const Spacer(),
+                            _circle(Icons.my_location_rounded,
+                                () => _map.move(_center, 14))
+                          ]))),
+                  _panel(),
+                ]));
+
+  Widget _circle(IconData icon, VoidCallback fn) => Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 2,
+      child: IconButton(onPressed: fn, icon: Icon(icon)));
+  String get _title => _stops.length < 2
+      ? 'Tuyến đã tối ưu'
+      : '${_stops.first.name} - ${_stops.last.name}';
+  Widget _panel() => DraggableScrollableSheet(
+      initialChildSize: .50,
+      minChildSize: .24,
+      maxChildSize: .86,
+      builder: (_, scroll) => Container(
+            decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)]),
+            child: Column(children: [
+              Container(
+                  margin: const EdgeInsets.only(top: 11),
+                  height: 4,
+                  width: 40,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFFFD4C9),
+                      borderRadius: BorderRadius.circular(3))),
+              Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 9),
+                  child: Row(children: [
+                    Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 5),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFFE7F5EF),
+                            borderRadius: BorderRadius.circular(5)),
+                        child: Text('CT-${_id.toString().padLeft(2, '0')}',
+                            style: const TextStyle(
+                                color: Color(0xFF07835A),
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16))),
+                    const SizedBox(width: 7),
+                    Expanded(
+                        child: Text(_title,
+                            maxLines: 2,
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600))),
+                    _chip(),
+                  ])),
+              TabBar(
+                  controller: _tabs,
+                  labelColor: const Color(0xFFFF5D3D),
+                  unselectedLabelColor: const Color(0xFF343A40),
+                  indicatorColor: const Color(0xFFFF5D3D),
+                  tabs: const [
+                    Tab(text: 'Danh sách trạm'),
+                    Tab(text: 'Biểu đồ giờ'),
+                    Tab(text: 'Thông tin')
+                  ]),
+              Expanded(
+                  child: TabBarView(controller: _tabs, children: [
+                _stopsView(scroll),
+                _hoursView(scroll),
+                _infoView(scroll)
+              ])),
+            ]),
+          ));
+  Widget _chip() => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+          color: const Color(0xFFE7F5EF),
+          borderRadius: BorderRadius.circular(14)),
+      child: Text(
+          _status == 'in_progress'
+              ? 'Đang chạy'
+              : _status == 'completed'
+                  ? 'Hoàn tất'
+                  : 'Sắp chạy',
+          style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF07835A),
+              fontWeight: FontWeight.w700)));
+  Widget _stopsView(ScrollController scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.fromLTRB(24, 15, 16, 24),
+          children: [
+            Text('Tuyến CT-${_id.toString().padLeft(2, '0')}',
+                style: const TextStyle(
+                    color: Color(0xFFFF4D32),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            for (var i = 0; i < _stops.length; i++)
+              _stopLine(_stops[i], i == _stops.length - 1),
+            const SizedBox(height: 10),
+            _button()
+          ]);
+  Widget _stopLine(_Stop s, bool last) =>
+      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Column(children: [
+          const Icon(Icons.circle, size: 11, color: Color(0xFF788992)),
+          if (!last)
+            Container(width: 2, height: 27, color: const Color(0xFFD8DFE2))
+        ]),
+        const SizedBox(width: 11),
+        Expanded(
+            child: Padding(
+                padding: const EdgeInsets.only(bottom: 15),
+                child: Row(children: [
+                  Expanded(
+                      child:
+                          Text(s.name, style: const TextStyle(fontSize: 13))),
+                  Text(s.time,
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF75828B)))
+                ])))
+      ]);
+  Widget _hoursView(ScrollController scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.all(20),
+          children: [
+            const Center(
+                child: Text('Hôm nay',
+                    style: TextStyle(fontWeight: FontWeight.w700))),
+            const SizedBox(height: 18),
+            Wrap(
+                spacing: 20,
+                runSpacing: 14,
+                children: _stops
+                    .map((s) => SizedBox(
+                        width: 75,
+                        child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Trạng thái: ${_statusLabel(_tripStatus)}',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: _statusColor(_tripStatus),
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              const Text(
-                                'Tốc độ trung bình: 28 km/h',
-                                style: TextStyle(fontSize: 12, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        ),
-                        FilledButton.icon(
-                          onPressed: _isBusy || _tripStatus == 'completed'
-                              ? null
-                              : _handleTripAction,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _tripStatus == 'in_progress'
-                                ? Colors.redAccent
-                                : AppColors.teal,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          icon: Icon(_tripStatus == 'in_progress'
-                              ? Icons.stop_rounded
-                              : Icons.play_arrow_rounded),
-                          label: Text(_tripStatus == 'in_progress'
-                              ? 'Kết thúc chuyến'
-                              : 'Bắt đầu chuyến'),
-                        ),
-                      ],
-                    ),
-
-                    const Divider(height: 24),
-
-                    // Stops Timeline Title
-                    const Text(
-                      'Tiến độ các trạm dừng (Stops Timeline)',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF181C1D),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Timeline items
-                    for (int i = 0; i < _routeStops.length; i++) ...[
-                      _timelineTile(_routeStops[i], isLast: i == _routeStops.length - 1),
-                    ],
-
-                    const SizedBox(height: 20),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _filterChip(String id, String label) {
-    final selected = _selectedFilter == id;
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      selectedColor: AppColors.teal,
-      backgroundColor: Colors.white,
-      labelStyle: TextStyle(
-        color: selected ? Colors.white : Colors.black87,
-        fontWeight: FontWeight.w600,
-        fontSize: 13,
-      ),
-      onSelected: (val) {
-        if (val) setState(() => _selectedFilter = id);
-      },
-      elevation: 2,
-    );
-  }
-
-  Widget _timelineTile(_MapStop stop, {required bool isLast}) {
-    Color dotColor = AppColors.teal;
-    if (stop.status == 'passed') dotColor = Colors.grey;
-    if (stop.status == 'active') dotColor = Colors.orange;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
+                              Text(s.time,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w700)),
+                              Text('Trạm ${s.order}',
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Color(0xFF75828B)))
+                            ])))
+                    .toList())
+          ]);
+  Widget _infoView(ScrollController scroll) => ListView(
+          controller: scroll,
+          padding: const EdgeInsets.all(20),
           children: [
-            Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: dotColor,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
-              ),
-            ),
-            if (!isLast)
-              Container(
-                width: 2,
-                height: 40,
-                color: Colors.grey[300],
-              ),
-          ],
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 14),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            _line('Tuyến số', 'CT-${_id.toString().padLeft(2, '0')}'),
+            _line('Tên tuyến', _title),
+            _line(
+                'Giờ hoạt động',
+                _stops.isEmpty
+                    ? 'Đang cập nhật'
+                    : '${_stops.first.time} - ${_stops.last.time}'),
+            _line('Quãng đường chạy toàn tuyến',
+                '${(_route?['total_distance'] as num?)?.toStringAsFixed(1) ?? '—'} km'),
+            _line('Số trạm phục vụ', '${_stops.length} trạm'),
+            const SizedBox(height: 10),
+            _button()
+          ]);
+  Widget _line(String key, String value) => Padding(
+      padding: const EdgeInsets.only(bottom: 15),
+      child: RichText(
+          text: TextSpan(
+              style: const TextStyle(fontSize: 13, color: Color(0xFF273130)),
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        stop.name,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: stop.status == 'active'
-                              ? FontWeight.bold
-                              : FontWeight.w500,
-                          color: stop.status == 'passed'
-                              ? Colors.grey
-                              : Colors.black87,
-                        ),
-                      ),
-                      Text(
-                        'Dự kiến: ${stop.time}',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                if (stop.status == 'active')
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'Trạm hiện tại',
-                      style: TextStyle(
-                        color: Colors.orange,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _statusLabel(String? status) {
-    switch (status) {
-      case 'in_progress':
-        return 'Đang di chuyển (In Progress)';
-      case 'completed':
-        return 'Đã hoàn thành';
-      default:
-        return 'Chưa bắt đầu';
-    }
-  }
-
-  Color _statusColor(String? status) {
-    switch (status) {
-      case 'in_progress':
-        return AppColors.teal;
-      case 'completed':
-        return Colors.green;
-      default:
-        return Colors.orange;
-    }
-  }
+            TextSpan(
+                text: '$key: ',
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+            TextSpan(
+                text: value, style: const TextStyle(color: Color(0xFF75828B)))
+          ])));
+  Widget _button() => FilledButton.icon(
+      onPressed: _busy || _status == 'completed' ? null : _toggle,
+      style: FilledButton.styleFrom(
+          backgroundColor: _status == 'in_progress'
+              ? const Color(0xFFD94E41)
+              : AppColors.teal),
+      icon: Icon(_status == 'in_progress'
+          ? Icons.stop_rounded
+          : Icons.play_arrow_rounded),
+      label: Text(
+          _status == 'in_progress' ? 'Kết thúc chuyến' : 'Bắt đầu chuyến'));
 }
 
-class _MapStop {
-  const _MapStop(this.pos, this.name, this.time, this.status);
-  final LatLng pos;
-  final String name;
-  final String time;
-  final String status; // passed, active, upcoming
+class _Stop {
+  const _Stop(this.name, this.point, this.time, this.order);
+  final String name, time;
+  final LatLng point;
+  final int order;
+}
+
+class _Pin extends StatelessWidget {
+  const _Pin({required this.active});
+  final bool active;
+  @override
+  Widget build(BuildContext context) => Container(
+      decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: active ? const Color(0xFFFFA23B) : const Color(0xFFFF6B4A),
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)]),
+      child: const Icon(Icons.directions_bus_rounded,
+          size: 20, color: Colors.white));
 }

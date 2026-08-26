@@ -36,7 +36,8 @@ def create_route(db: Session, vehicle_id: int, route_date: date, total_distance:
         db_stop = RouteStop(
             route_id=db_route.id,
             location_id=stop_info["id"],
-            stop_order=idx
+            stop_order=idx,
+            arrival_time=stop_info.get("arrival_time"),
         )
         db.add(db_stop)
 
