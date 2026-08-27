@@ -1,4 +1,12 @@
-# Kế hoạch MVP MyCTU BUS trong 10 ngày làm việc
+# Kế hoạch kiến trúc MVP MyCTU BUS (tham chiếu)
+
+> **Cập nhật 27/08/2026:** project Supabase đã được tạo và Web API đã deploy thành công lên Render. Kế hoạch triển khai và phân công hiện hành là [team_task_assignments_10_days.md](team_task_assignments_10_days.md): 8 ngày còn lại, với Nhã là leader; Minh phụ trách DB/Supabase; Duy phụ trách Routing/Scheduler; Khánh phụ trách Flutter sinh viên; Lợi phụ trách Flutter tài xế & QA. Bảng “10 ngày” bên dưới được giữ lại làm bối cảnh kiến trúc/phạm vi ban đầu, không dùng để giao việc nữa.
+
+## Trạng thái sau T0
+
+- Đã hoàn thành: khởi tạo Supabase và đưa FastAPI lên Render (service Live, endpoint `/` trả `200`).
+- Chưa tự động hoàn thành: migration schema UUID, RLS, seed, xác thực JWT Supabase, và kiểm thử Render kết nối database qua `GET /health`.
+- Ưu tiên T1 của leader: dời mọi secret sang Render Environment, loại secret mặc định khỏi code, giới hạn CORS, và bỏ `Base.metadata.create_all()` khỏi startup deploy để schema chỉ do migration quản lý.
 
 ## Kết luận rà soát
 

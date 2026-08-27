@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     SQLALCHEMY_DATABASE_URI: Optional[str] = None
 
+    # Supabase Settings
+    SUPABASE_URL: str = ""
+    SUPABASE_ANON_KEY: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+    CRON_SECRET: str = "ctu_bus_cron_secret_2026_super_secure_x987"
+
     # Security Settings
     SECRET_KEY: str = "changeme_secret_key_please_set_in_env"
     ALGORITHM: str = "HS256"

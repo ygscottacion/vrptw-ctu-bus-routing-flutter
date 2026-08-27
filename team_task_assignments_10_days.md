@@ -1,118 +1,63 @@
-# Phân công triển khai MVP staging — 10 ngày làm việc
+# Kế hoạch MVP staging sau khi đã tạo Supabase và deploy Render
 
-**Quy ước thời gian:** Ngày 1 là ngày bắt đầu dự án. Mỗi việc phải được review/merge trước 17:00 ngày ghi trong cột “Hoàn thành”. `P0` là blocker; không bắt đầu việc phụ thuộc khi P0 chưa được nghiệm thu.
+**Cập nhật:** 27/08/2026 (GMT+7)  
+**Thời lượng còn lại:** 8 ngày làm việc, tính từ ngày nhóm bắt đầu mốc T1.  
+**Mục tiêu:** một bản staging chạy end-to-end: đăng nhập Supabase, đặt vé đúng hạn, sinh/gán tuyến, tài xế quét QR và gửi GPS foreground.
 
-## Nguyên tắc tránh đụng độ
+## Mốc đã hoàn thành (T0)
 
-| Khu vực sở hữu | Chủ sở hữu duy nhất | Người chỉ được tích hợp qua API/PR |
+| Hạng mục | Trạng thái | Bằng chứng/việc còn phải nghiệm thu |
 |---|---|---|
-| `backend/app/core`, `deps.py`, endpoint nghiệp vụ, Docker/CI | Thành viên 1 | 2, 3 cung cấp migration/contract; 4, 5 chỉ gọi API |
-| `supabase/`, migration SQL, RLS, seed | Thành viên 2 | 1 chỉ chạy migration; không sửa SQL trực tiếp |
-| `backend/app/services/student_routing/`, scheduler/job runner | Thành viên 3 | 1 chỉ đăng ký route/cron theo contract |
-| `lib/main.dart`, auth/session, screens sinh viên, API client | Thành viên 4 | 5 không sửa các file này |
-| `lib/features/driver/`, GPS/QR driver, test E2E | Thành viên 5 | 4 không sửa các file driver |
+| Khởi tạo project Supabase | Hoàn thành | Minh kiểm tra URL, database connection và quyền của các key; **không** đưa service-role key vào Flutter hoặc Git. Schema, RLS và seed chưa được coi là hoàn thành chỉ vì project đã được tạo. |
+| Deploy Web API FastAPI lên Render | Hoàn thành | Service Render đang Live, endpoint `/` trả `200`. Nhã cần xác minh `/health` trả database `connected`, `/ready` trả `200`, và lưu URL staging trong cấu hình dự án. |
 
-**Điểm bàn giao cố định:** 17:00 ngày 1 (OpenAPI + ERD), 17:00 ngày 3 (Auth/Profile), 17:00 ngày 5 (Booking → Route), 17:00 ngày 6 (GPS/QR), 17:00 ngày 8 (candidate staging). Mọi thay đổi contract sau ngày 3 phải được cả Thành viên 1, 3, 4 và 5 chấp thuận.
+> Log `HEAD / 405` trên Render không phải lỗi deploy: FastAPI chỉ khai báo `GET /`. Health check của Render nên gọi `GET /health` hoặc cấu hình endpoint health phù hợp.
 
-## Dependency tổng quát
+## Phân công cố định và ranh giới sở hữu
 
-```text
-P0: ERD UUID + OpenAPI (Ngày 1)
- ├─> Migration/RLS/seed (TV2) ──> staging database
- ├─> JWT JWKS + profile/role API (TV1) ──> Flutter Auth (TV4, TV5)
- └─> Contract demand/job (TV3) ──> API booking/job (TV1)
-                                      ├─> UI đặt vé/vé của tôi (TV4)
-                                      └─> UI tuyến/start-end/QR (TV5)
+| Thành viên | Vai trò | Chịu trách nhiệm chính | Không tự sửa |
+|---|---|---|---|
+| **Nhã (leader)** | Tích hợp Backend/Cloud | API FastAPI, Render, OpenAPI, auth JWT, biến môi trường, merge/release và xử lý blocker liên nhóm | migration/RLS của Minh; UI Flutter của Khánh/Lợi; thuật toán của Duy |
+| **Minh** | Database/Supabase | ERD UUID, SQL migration, RLS, seed, indexes, kiểm thử quyền A/B | endpoint/backend Python của Nhã |
+| **Duy** | Routing/Scheduler | contract demand/route/job, Sweep/Tabu, job idempotent, scheduler/cron và benchmark | schema migration và Flutter UI |
+| **Khánh** | Flutter sinh viên | cấu hình API/Auth, phiên đăng nhập, booking/ticket, map sinh viên và APK sinh viên | các file `lib/features/driver/` |
+| **Lợi** | Flutter tài xế & QA | UI tài xế, QR camera, GPS foreground, test matrix, E2E và evidence QA | `lib/main.dart`, auth/app shell và màn hình sinh viên của Khánh |
 
-Booking dữ liệu thật + seed ──> Job Sweep/Tabu (TV3) ──> route assignment
-                                                        ├─> Student route/map (TV4)
-                                                        └─> Driver route screen (TV5)
+## Các việc ưu tiên ngay tại T1
 
-Driver start route ──> GPS foreground API (TV1) ──> GPS driver (TV5) ──> Map student (TV4)
-```
-
-## Thành viên 1 — Backend & Cloud lead
-
-| ID | Công việc/đầu ra | File/khu vực sở hữu | Tiên quyết | Hoàn thành |
-|---|---|---|---|---|
-| B1-P0 | Viết OpenAPI v1, quy ước response/error, endpoint `/health` và `/ready`; tạo `.env.example`. | `backend/app/api`, `backend/app/core`, `backend/.env.example` | Không | Ngày 1 |
-| B2-P0 | Docker deploy staging, cấu hình CORS allowlist, health check và log request an toàn. | `backend/Dockerfile`, cấu hình deploy | B1 | Ngày 2 |
-| B3-P0 | Thay xác thực nội bộ bằng dependency xác minh Supabase JWT/JWKS; endpoint `/me` trả profile/role. | `backend/app/api/deps.py`, auth/profile endpoint | ERD TV2 ngày 1, B1 | Ngày 3 |
-| B4-P0 | API mua/hủy vé và ví ledger trong transaction; deadline timezone-aware; idempotency key. | ticket/booking/wallet endpoints, tests | B3, migration TV2 ngày 3, contract TV3 ngày 2 | Ngày 4 |
-| B5-P0 | Đăng ký endpoint tạo route-job bảo vệ `X-Cron-Secret`; gọi service TV3, trả trạng thái job. | route-job endpoint, cron config | B4, service interface TV3 ngày 4 | Ngày 5 |
-| B6 | API start/end route, QR verify có ownership; API GPS POST + route position GET, rate limit cơ bản. | driver/ticket/GPS endpoints | B3, schema TV2 ngày 4 | Ngày 6 |
-| B7 | Integration/regression tests, deploy candidate staging, fix P0/P1 backend. | `backend/tests`, deploy | B4–B6 | Ngày 8 |
-| B8 | Runbook vận hành (env, migration, cron, rollback), release staging. | `backend/README.md` hoặc runbook | B7, QA pass | Ngày 10 |
-
-## Thành viên 2 — Database & Supabase lead
-
-| ID | Công việc/đầu ra | File/khu vực sở hữu | Tiên quyết | Hoàn thành |
-|---|---|---|---|---|
-| D1-P0 | Chốt ERD và data dictionary: `profiles.id UUID`, role, ticket/booking/route/wallet/job/GPS; quyết định enum & state machine. | ERD/document + `supabase/migrations` skeleton | Không | Ngày 1 |
-| D2-P0 | Tạo Supabase staging, Supabase CLI, migration baseline và trigger `auth.users → profiles`. | `supabase/migrations/00001_*` | D1 | Ngày 2 |
-| D3-P0 | Migration domain: wallet ledger, ticket/booking, route/job; FK/unique/index; UTC `timestamptz`. | `supabase/migrations/00002_*` | D1 | Ngày 3 |
-| D4-P0 | RLS deny-by-default, policy role phù hợp, test A không thấy B. | `supabase/migrations/00003_*` | D2, D3 | Ngày 4 |
-| D5 | Seed idempotent: 5 sinh viên, 2 tài xế, 2 xe, 5 trạm; tài liệu test credentials không commit secret. | `supabase/seed_staging.sql` | D3 | Ngày 5 |
-| D6 | Bảng GPS/retention/index, reset staging từ đầu; hỗ trợ query plan/index. | migration bổ sung + test reset | D4 | Ngày 6 |
-| D7 | Security review: RLS, service-role exposure, migration fresh-install; freeze schema. | checklist DB | D5, D6 | Ngày 8 |
-| D8 | Xác minh migration/seed trên candidate staging và bàn giao database release. | pipeline/runbook | D7 | Ngày 10 |
-
-## Thành viên 3 — Routing & Scheduler lead
-
-| ID | Công việc/đầu ra | File/khu vực sở hữu | Tiên quyết | Hoàn thành |
-|---|---|---|---|---|
-| R1-P0 | Chốt contract `DemandInput`, `RouteOutput`, job status và các tham số thuật toán với TV1/TV2. | `backend/app/services/student_routing/schemas.py`, tài liệu contract | D1, B1 | Ngày 2 |
-| R2 | Adapter đọc booking thật theo service date/session/trip; validation năng lực xe/trạm. | `backend/app/services/student_routing/` | R1, schema D3 | Ngày 3 |
-| R3-P0 | Job runner idempotent: lock, `queued/running/succeeded/failed`, chạy Sweep → Tabu → persist route/stops/assignment. | routing service/job runner và unit tests | R2, B4, D3 | Ngày 5 |
-| R4 | Timezone cutoff + retry/failure policy; không chạy lặp route đã thành công. | scheduler/job tests | R3 | Ngày 6 |
-| R5 | Benchmark với seed, giới hạn dữ liệu MVP, log metric và hướng dẫn gọi cron. | benchmark/runbook | R3, D5 | Ngày 7 |
-| R6 | Hỗ trợ E2E booking → route; sửa P0/P1 thuật toán, freeze interface. | service/tests | B5, R4 | Ngày 8 |
-| R7 | Chạy job nghiệm thu và bàn giao kết quả/mức giới hạn đã đo. | evidence QA/runbook | R6 | Ngày 10 |
-
-## Thành viên 4 — Flutter sinh viên & app shell lead
-
-| ID | Công việc/đầu ra | File/khu vực sở hữu | Tiên quyết | Hoàn thành |
-|---|---|---|---|---|
-| F1-P0 | Tạo layer config từ `--dart-define`, repository/API client, auth/session state; xóa định tuyến URL localhost trên đường release. | `lib/config`, `lib/services`, `lib/main.dart` | B1 | Ngày 2 |
-| F2-P0 | Supabase Auth UI: email/password, lỗi/loading, logout, restore session; lấy role qua `/me`. | auth/app shell/settings | B3, package/config F1 | Ngày 3 |
-| F3-P0 | Đổi luồng đặt vé: ngày chạy, ca, chiều, trạm; deadline/error; không chọn route trước chốt sổ. | `lib/screens/ticket_screen.dart` | B4, contract B1 | Ngày 5 |
-| F4 | Vé của tôi theo `reserved/assigned/checked_in/expired/cancelled`; QR chỉ với vé hợp lệ. | ticket UI | B4, B5 | Ngày 6 |
-| F5 | Trang chủ dùng số dư/lịch sử API hoặc ẩn thao tác nạp demo; CTA đặt vé/trạng thái deadline. | `lib/screens/home_screen.dart` | B4 | Ngày 6 |
-| F6 | Map sinh viên lấy route/vị trí thật, loading/empty/error, polling 15s; xóa xe/tuyến fallback giả. | `lib/screens/map_screen.dart` | B6, route assignment R3 | Ngày 7 |
-| F7 | Android device test, UI polish/accessibility, xử lý offline/retry và P0/P1. | student feature tests | F3–F6 | Ngày 9 |
-| F8 | Build APK staging, checklist UI sinh viên, hỗ trợ nghiệm thu. | build/release evidence | F7 | Ngày 10 |
-
-## Thành viên 5 — Flutter tài xế & QA lead
-
-| ID | Công việc/đầu ra | File/khu vực sở hữu | Tiên quyết | Hoàn thành |
-|---|---|---|---|---|
-| Q1-P0 | Viết test matrix E2E: role/RLS, deadline, booking, generate, assigned, start/end, QR, GPS. | `docs/qa` hoặc tài liệu QA | B1, D1 | Ngày 1 |
-| Q2 | Refactor driver shell/menu/empty-loading-error; thống nhất nhãn tiếng Việt, chỉ route được gán. | `lib/features/driver`, `driver_shell.dart` | B3, contract B1 | Ngày 3 |
-| Q3-P0 | UI danh sách/chi tiết tuyến; start/end route và phản hồi lỗi server. | `driver_home_tab.dart`, `driver_map_tab.dart` | B6 | Ngày 6 |
-| Q4-P0 | Tích hợp camera QR, permissions, duplicate scan guard; input mã chỉ debug. | `driver_qr_tab.dart`, Android permissions | B6 | Ngày 6 |
-| Q5 | GPS foreground: permission, start/stop theo trạng thái chuyến, gửi 15–20 giây/lần, lỗi mạng. | `driver_gps_service.dart`, driver map/home UI | B6 | Ngày 7 |
-| Q6 | Test E2E vòng 1 bằng seed và thiết bị thật; tạo defect P0/P1/P2 có bước tái hiện. | test matrix/evidence | B5, R3, F3–F5, Q3–Q5 | Ngày 8 |
-| Q7 | Retest candidate staging, test A/B RLS và deadline 21:59/22:01; sign-off QA. | QA report | B7, D7, F6 | Ngày 9 |
-| Q8 | Smoke test APK cuối, lưu ảnh/video evidence và known limitations. | QA report | F8, B8 | Ngày 10 |
-
-## Thứ tự thực hiện bắt buộc theo ngày
-
-| Ngày | Việc phải hoàn thành trước 17:00 | Việc chỉ được bắt đầu sau khi mốc đạt |
+| Người | Việc phải làm trước khi nhận tính năng mới | Đầu ra nghiệm thu |
 |---|---|---|
-| 1 | B1, D1, Q1; chốt OpenAPI/ERD | D2, R1, F1, Q2 |
-| 2 | B2, D2, R1, F1 | B3, D3, R2, F2 |
-| 3 | B3, D3, R2, F2, Q2 | D4, B4, F3 |
-| 4 | D4, B4 | D5, R3, B5, F4/F5 |
-| 5 | D5, R3, B5, F3 | B6, Q3/Q4, F4/F5 |
-| 6 | B6, R4, F4/F5, Q3/Q4 | D6, F6, Q5 |
-| 7 | D6, R5, F6, Q5 | B7, Q6 |
-| 8 | B7, D7, R6, Q6 | F7, Q7, B8 |
-| 9 | F7, Q7; mọi P0/P1 đóng | F8, Q8 |
-| 10 | B8, D8, R7, F8, Q8 | Nghiệm thu staging |
+| Nhã | Kiểm tra Render ↔ Supabase bằng `GET /health`; chuyển toàn bộ secret sang Render Environment; bỏ secret mặc định khỏi mã; giới hạn CORS theo URL web staging. Dừng dùng `Base.metadata.create_all()` khi deploy và thống nhất migration là nguồn schema. | `/health` báo `connected`; không có service-role/DB password/cron secret trong Git hoặc APK; pull request cấu hình được Minh review. |
+| Minh | Chốt ERD Supabase dùng `profiles.id uuid → auth.users.id`; tạo baseline migration và trigger tạo profile. | Migration chạy được trên database trống; tài khoản tạo trong Supabase Auth có profile đúng role. |
+| Duy | Chốt với Nhã/Minh hợp đồng `DemandInput`, `RouteOutput`, `job status` và khóa duy nhất theo ngày/ca/chiều. | Tài liệu contract được cả ba xác nhận; test dữ liệu nhỏ chạy được độc lập. |
+| Khánh | Tạo `--dart-define` cho base API/Supabase URL/anon key, thay localhost; chuẩn bị Auth/session repository. | Web/APK staging không chứa `localhost`, `10.0.2.2` hay key nhạy cảm. |
+| Lợi | Lập test matrix E2E và rà soát quyền camera/location Android; dọn UI driver placeholder theo trạng thái. | Checklist có bước, dữ liệu test, expected result và nơi lưu ảnh/video evidence. |
 
-## Quy tắc báo cáo và xử lý blocker
+## Lộ trình 8 ngày còn lại
 
-- Mỗi thành viên báo cáo trước 17:00: ID công việc, PR/commit, test đã chạy, blocker và dependency ngày sau.
-- P0 được báo ngay trong ngày cho TV1 (API), TV2 (DB), TV3 (routing), TV4/TV5 (client) theo khu vực chủ sở hữu; không tự sửa file của người khác để “chữa cháy”.
-- PR chạm OpenAPI, migration hoặc state của ticket phải có người chủ sở hữu và ít nhất một consumer review: TV4 hoặc TV5 cho API; TV1 cho migration; TV1 và TV3 cho route-job.
-- Sau 17:00 ngày 8: đóng băng schema và API; chỉ nhận sửa lỗi P0/P1, không nhận thêm tính năng.
+| Ngày | Nhã — leader/Backend/Cloud | Minh — DB/Supabase | Duy — Routing/Scheduler | Khánh — Flutter sinh viên | Lợi — Flutter tài xế/QA | Mốc tích hợp |
+|---|---|---|---|---|---|---|
+| **T1** | Nghiệm thu health, Render env, CORS/secret/migration policy; công bố OpenAPI v1. | ERD UUID, migration baseline + `auth.users → profiles`. | Chốt contract demand/route/job. | App config + Supabase client/session state. | Test matrix, quyền QR/GPS, trạng thái driver. | URL API, OpenAPI và ERD được chốt. |
+| **T2** | JWT/JWKS dependency, `/me`, role guard; bỏ luồng JWT nội bộ trên đường release. | Migration ticket/booking/wallet/job; ràng buộc/index UTC. | Adapter booking → demand; validation xe/trạm. | Login/logout/restore session, gọi `/me`. | Driver chỉ xem route được gán; empty/loading/error. | Sinh viên/tài xế login Supabase và nhận đúng role. |
+| **T3** | API đặt/hủy vé + wallet ledger trong transaction, idempotency key, deadline `Asia/Ho_Chi_Minh`. | RLS deny-by-default, policy và test user A/B. | Job skeleton có lock và trạng thái `queued/running/succeeded/failed`. | Màn đặt vé: ngày, ca, chiều, trạm; xử lý deadline/lỗi. | Chuẩn bị API start/end route và UX trạng thái chuyến. | Một booking và ledger được tạo đúng một lần. |
+| **T4** | Endpoint route-job bảo vệ `X-Cron-Secret`; endpoint danh sách/chi tiết route. | Seed idempotent: 5 SV, 2 tài xế, 2 xe, 5 trạm. | Chạy Sweep → Tabu, persist route/stops/assignment; chống chạy trùng. | Vé của tôi: `reserved/assigned/checked_in/cancelled`; bỏ route giả. | UI start/end route; QR camera scanner + duplicate-scan guard. | Demo booking → generate → assigned. |
+| **T5** | API QR verify ownership/idempotency; API GPS POST + route-position GET, rate limit cơ bản. | GPS table/index/retention, kiểm tra query plan. | Cutoff timezone, retry/failure policy, benchmark seed. | Hiển thị route/vị trí thật, polling 15 giây, không timer xe giả. | GPS foreground: permission, start/stop, gửi 15–20 giây/lần. | Tài xế gửi vị trí; sinh viên thấy vị trí thật. |
+| **T6** | Integration/regression tests; fix P0/P1; deploy candidate Render. | Fresh-install/reset + seed repeatable; security review. | E2E booking → route; freeze service interface. | Test Android, offline/retry/accessibility. | E2E vòng 1 trên thiết bị thật, ghi defect tái hiện được. | Candidate staging. |
+| **T7** | Freeze API/schema, chỉ sửa P0/P1; runbook Render/rollback/cron. | Xác minh RLS và không secret trong repo; freeze migration. | Chạy job nghiệm thu, ghi giới hạn dữ liệu/hiệu năng. | UAT sinh viên, sửa blocker. | UAT tài xế QR/GPS, retest A/B RLS và deadline 21:59/22:01. | E2E vòng 2 đạt. |
+| **T8** | Release/tag staging, công bố known limitations. | Bàn giao migration/seed phiên bản cuối. | Bàn giao scheduler/runbook. | Build APK staging + checklist sinh viên. | Smoke test cuối, evidence QA và sign-off. | Nghiệm thu MVP staging. |
+
+## Quy tắc phối hợp
+
+- Nhã là người quyết định ưu tiên, chủ trì stand-up 15 phút mỗi ngày và chỉ merge khi có owner review. Mỗi người báo trước 17:00: mã việc, PR/commit, test đã chạy, blocker và dependency ngày kế tiếp.
+- Minh gửi cho Nhã **tên biến môi trường và cách đặt giá trị**, không gửi secret vào chat/commit. Nhã đặt giá trị thật trên Render; Khánh chỉ dùng URL + anon key qua `--dart-define`.
+- Thay đổi OpenAPI, migration hoặc ticket state phải có review của owner và ít nhất một consumer: Khánh hoặc Lợi review API; Nhã review migration; Nhã và Duy review route-job.
+- Sau T7, API/schema đóng băng; chỉ nhận sửa P0/P1. Không thêm thanh toán thật, background GPS, push notification hoặc admin web vào đợt này.
+
+## Tiêu chí nghiệm thu T8
+
+- `/health` trên Render kết nối Supabase thành công và `/ready` trả `200`; secrets không xuất hiện trong repository, log hay Flutter build.
+- Sinh viên và tài xế đăng nhập Supabase trên thiết bị thật; FastAPI xác minh JWT và trả role đúng.
+- Sinh viên A không đọc/ghi dữ liệu B; booking trước 22:00 thành công và sau 22:00 bị chặn theo giờ Việt Nam.
+- Chạy job cùng ngày/ca/chiều hai lần không tạo dữ liệu trùng; vé được gán tuyến khi job thành công.
+- QR hợp lệ chỉ check-in một lần; GPS foreground của tài xế hiển thị trên app sinh viên.
+- APK staging không chứa endpoint localhost, thông tin demo nhạy cảm, service-role key hoặc dữ liệu xe/vị trí giả.

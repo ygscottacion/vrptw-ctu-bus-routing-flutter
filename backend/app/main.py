@@ -27,9 +27,26 @@ app.add_middleware(
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from fastapi import Depends
+from app.core.database import get_db
+
 @app.get("/")
 def root():
     return {
         "message": "Welcome to CTU Bus Routing API System (VRPTW)",
         "docs": "/docs"
     }
+
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected", "provider": "Supabase Cloud"}
+    except Exception as e:
+        return {"status": "error", "database": str(e)}
+
+@app.get("/ready")
+def readiness_check():
+    return {"status": "ready"}
