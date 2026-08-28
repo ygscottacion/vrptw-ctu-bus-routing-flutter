@@ -1,6 +1,6 @@
 """Add daily-ticket reservation fields used by the cutoff and routing pipeline.
 
-Revision ID: 20260825_daily_ticket_reservations
+Revision ID: 20260825_daily_tickets
 Revises:
 Create Date: 2026-08-25
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260825_daily_ticket_reservations"
+revision = "20260825_daily_tickets"
 down_revision = None
 branch_labels = None
 depends_on = None

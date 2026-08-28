@@ -14,7 +14,7 @@ app = FastAPI(
 )
 
 # Tự động tạo tất cả các bảng chưa có trong DB
-Base.metadata.create_all(bind=engine)
+#Base.metadata.create_all(bind=engine)
 
 # Set all CORS enabled origins
 app.add_middleware(
@@ -49,4 +49,4 @@ def health_check(db: Session = Depends(get_db)):
 
 @app.get("/ready")
 def readiness_check():
-    return {"status": "ready"}
+    return {"status": "ready"}
