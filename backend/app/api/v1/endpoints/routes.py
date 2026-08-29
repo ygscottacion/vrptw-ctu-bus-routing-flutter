@@ -22,6 +22,7 @@ from app.schemas.route import (
 from app.services.job_store import JobStatus, route_job_store
 from app.services.vrptw_solver import VRPTWSolverService
 from app.services.student_routing.schemas import SessionId, TripType
+from app.services.demand_adapter import DemandAdapter, RoutingValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -144,26 +145,22 @@ def generate_routes(
     reserved_tickets = crud_ticket.get_unassigned_tickets_for_run(
         db, request.date, request.session_id, request.trip_type
     )
-    if not reserved_tickets:
+    demand_by_location = DemandAdapter.aggregate_tickets_to_station_demands(reserved_tickets)
+    if not demand_by_location:
         raise HTTPException(status_code=400, detail="Không có vé lượt đã chốt cho ca này.")
-    demand_by_location = {}
-    for ticket in reserved_tickets:
-        demand_by_location[ticket.pickup_location_id] = demand_by_location.get(ticket.pickup_location_id, 0) + 1
+
     locations_db = db.query(Location).filter(Location.id.in_(demand_by_location.keys())).all()
     vehicles_db = db.query(Vehicle).all()
 
-    if not vehicles_db:
-        raise HTTPException(status_code=400, detail="No vehicles available in system")
-
-    depot_dict = {"id": depot_loc.id, "name": depot_loc.name, "latitude": depot_loc.latitude, "longitude": depot_loc.longitude}
-    locations_dict = [
-        {"id": loc.id, "name": loc.name, "latitude": loc.latitude, "longitude": loc.longitude, "demand": demand_by_location[loc.id]}
-        for loc in locations_db
-    ]
-    vehicles_dict = [
-        {"id": v.id, "license_plate": v.license_plate, "capacity": v.capacity}
-        for v in vehicles_db
-    ]
+    try:
+        depot_dict, locations_dict, vehicles_dict = DemandAdapter.build_solver_inputs(
+            depot=depot_loc,
+            stations=locations_db,
+            vehicles=vehicles_db,
+            station_demands=demand_by_location,
+        )
+    except RoutingValidationError as err:
+        raise HTTPException(status_code=400, detail=str(err))
 
     job_id = route_job_store.create_job(requested_by_user_id=current_admin.id)
 
