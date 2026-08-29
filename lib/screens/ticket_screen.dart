@@ -32,15 +32,47 @@ class _TicketScreenState extends State<TicketScreen>
   List<_MyTicket> _myTickets = [];
   bool _loadingTickets = true;
 
+  bool _isBuying = false;
+  String? _buyError;
+
+  // ─── Ngày chạy / Deadline 22:00 (Asia/Ho_Chi_Minh) ─────────
+  // Ghi chú: Việt Nam không dùng giờ mùa hè (DST) nên lệch cố định UTC+7
+  // là đủ chính xác cho MVP. Nếu sau này cần xử lý đa timezone thật sự,
+  // nên chuyển sang package `timezone`.
+  static const _vnOffset = Duration(hours: 7);
+  DateTime get _nowVN => DateTime.now().toUtc().add(_vnOffset);
+
+  List<_ServiceDateOption> _dateOptions = [];
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    final now = DateTime.now();
-    _serviceDate =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    _dateOptions = _buildDateOptions();
+    // Mặc định chọn ngày sớm nhất còn trong hạn đặt.
+    final firstBookable = _dateOptions.firstWhere(
+      (d) => d.bookable,
+      orElse: () => _dateOptions.first,
+    );
+    _serviceDate = firstBookable.date;
     _loadRoutes();
     _loadTickets();
+  }
+
+  /// Sinh danh sách 5 ngày chạy kế tiếp, kèm trạng thái còn trong hạn đặt
+  /// (trước 22:00 ngày liền trước, theo giờ Việt Nam) hay không.
+  List<_ServiceDateOption> _buildDateOptions() {
+    final todayVN = DateTime(_nowVN.year, _nowVN.month, _nowVN.day);
+    final options = <_ServiceDateOption>[];
+    for (var i = 1; i <= 5; i++) {
+      final candidate = todayVN.add(Duration(days: i));
+      final deadline = candidate
+          .subtract(const Duration(days: 1))
+          .add(const Duration(hours: 22));
+      final bookable = _nowVN.isBefore(deadline);
+      options.add(_ServiceDateOption(candidate, deadline, bookable));
+    }
+    return options;
   }
 
   Future<void> _loadRoutes() async {
@@ -57,8 +89,17 @@ class _TicketScreenState extends State<TicketScreen>
         Colors.green,
       ];
 
-      for (var i = 0; i < items.length; i++) {
-        final r = items[i] as Map<String, dynamic>;
+      // ⚠️ TAM THOI DE TEST UI - XOA DOAN NAY SAU KHI TEST XONG
+      final testItems = items.isNotEmpty
+          ? items
+          : [
+        {'id': 1, 'name': 'Trạm CTU Khu II (test)'},
+        {'id': 2, 'name': 'Bến Ninh Kiều (test)'},
+        {'id': 3, 'name': 'Chợ Cái Răng (test)'},
+      ];
+
+      for (var i = 0; i < testItems.length; i++) {
+        final r = testItems[i] as Map<String, dynamic>;
         final id = r['id'].toString();
         final label = r['name']?.toString() ?? 'Trạm $id';
         loadedRoutes.add(_Route(id, label, 7000, colors[i % colors.length]));
@@ -71,7 +112,9 @@ class _TicketScreenState extends State<TicketScreen>
           _selectedRoute = _routes.first.id;
         }
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('LOI _loadRoutes: $e');
+      debugPrint('STACK: $stackTrace');
       if (mounted) {
         setState(() {
           _routeError = e.toString();
@@ -119,6 +162,14 @@ class _TicketScreenState extends State<TicketScreen>
     return '${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}đ';
   }
 
+  String _formatDateShort(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+
+  String _weekdayLabel(DateTime d) {
+    const labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+    return labels[d.weekday - 1];
+  }
+
   double _discountRateFor(String typeId) => 0.0;
 
   Map<String, int> get _price {
@@ -133,6 +184,16 @@ class _TicketScreenState extends State<TicketScreen>
     final total = base - discount;
     return {'original': base, 'discount': discount, 'total': total};
   }
+
+  /// Ngày đang được chọn có còn trong hạn đặt (trước 22:00 hôm trước) không.
+  bool get _isSelectedDateBookable {
+    final match = _dateOptions.where((d) => _isSameDate(d.date, _serviceDate));
+    if (match.isEmpty) return false;
+    return match.first.bookable;
+  }
+
+  bool _isSameDate(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   @override
   Widget build(BuildContext context) {
@@ -171,10 +232,11 @@ class _TicketScreenState extends State<TicketScreen>
 
   // ─── MY TICKETS (Tối ưu UI cho việc quét QR nhanh) ─────────
   Widget _buildMyTickets() {
-    if (_loadingTickets)
+    if (_loadingTickets) {
       return const Center(
         child: CircularProgressIndicator(color: AppColors.teal),
       );
+    }
     if (_myTickets.isEmpty) {
       return Center(
         child: Column(
@@ -429,8 +491,9 @@ class _TicketScreenState extends State<TicketScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _sectionTitle('1. Chọn trạm đón / trả'),
-                ..._routes.map((r) => _buildRouteOption(r)),
+                _sectionTitle('1. Chọn ngày chạy'),
+                _buildDatePicker(),
+                _buildDeadlineNotice(),
                 const SizedBox(height: AppSpacing.md),
                 _sectionTitle('2. Chọn ca chạy'),
                 SegmentedButton<String>(
@@ -462,13 +525,38 @@ class _TicketScreenState extends State<TicketScreen>
                       setState(() => _sessionId = value.first),
                 ),
                 const SizedBox(height: AppSpacing.md),
-                _sectionTitle('3. Vé lượt'),
+                _sectionTitle('3. Chọn trạm đón / trả'),
+                ..._routes.map((r) => _buildRouteOption(r)),
+                const SizedBox(height: AppSpacing.md),
+                _sectionTitle('4. Vé lượt'),
                 _buildTypeBtn(_types.first),
-                const SizedBox(height: AppSpacing.sm),
-                const Text(
-                    'Đặt trước 22:00 ngày hôm trước để hệ thống tối ưu tuyến.',
-                    style: TextStyle(
-                        color: AppColors.textSecondary, fontSize: 13)),
+                if (_buyError != null) ...[
+                  const SizedBox(height: AppSpacing.md),
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(AppRadius.sm),
+                      border:
+                          Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.error_outline_rounded,
+                            color: Colors.red, size: 20),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            _buyError!,
+                            style: const TextStyle(
+                                color: Colors.red, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 40), // Spacing padding
               ],
             ),
@@ -480,8 +568,111 @@ class _TicketScreenState extends State<TicketScreen>
     );
   }
 
+  Widget _buildDatePicker() {
+    return SizedBox(
+      height: 78,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _dateOptions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+        itemBuilder: (_, i) {
+          final option = _dateOptions[i];
+          final isActive = _isSameDate(option.date, _serviceDate);
+          final disabled = !option.bookable;
+          return GestureDetector(
+            onTap: disabled
+                ? null
+                : () => setState(() {
+                      _serviceDate = option.date;
+                      _buyError = null;
+                    }),
+            child: Opacity(
+              opacity: disabled ? 0.4 : 1,
+              child: Container(
+                width: 64,
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: isActive ? AppColors.teal : AppColors.white,
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  border: Border.all(
+                    color: isActive ? AppColors.teal : AppColors.border,
+                    width: isActive ? 2 : 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      _weekdayLabel(option.date),
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color:
+                            isActive ? Colors.white : AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatDateShort(option.date),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: isActive ? Colors.white : AppColors.textPrimary,
+                      ),
+                    ),
+                    if (disabled) ...[
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Hết hạn',
+                        style: TextStyle(fontSize: 9, color: Colors.red),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDeadlineNotice() {
+    final match = _dateOptions.where((d) => _isSameDate(d.date, _serviceDate));
+    final option = match.isEmpty ? null : match.first;
+    if (option == null) return const SizedBox.shrink();
+
+    final deadline = option.deadline;
+    final deadlineStr =
+        '${deadline.hour.toString().padLeft(2, '0')}:${deadline.minute.toString().padLeft(2, '0')} '
+        '${deadline.day.toString().padLeft(2, '0')}/${deadline.month.toString().padLeft(2, '0')}';
+
+    if (!option.bookable) {
+      return Padding(
+        padding: const EdgeInsets.only(top: AppSpacing.sm),
+        child: Text(
+          'Ngày này đã quá hạn đặt vé (hạn chót $deadlineStr).',
+          style: const TextStyle(
+              color: Colors.red, fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      );
+    }
+
+    final remaining = deadline.difference(_nowVN);
+    final hours = remaining.inHours;
+    final minutes = remaining.inMinutes.remainder(60);
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.sm),
+      child: Text(
+        'Hạn đặt vé cho ngày này: $deadlineStr (còn $hours giờ $minutes phút).',
+        style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+      ),
+    );
+  }
+
   Widget _buildCheckoutBottomBar() {
     final p = _price;
+    final canBuy = _isSelectedDateBookable && !_isBuying;
     return Container(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.lg,
@@ -544,19 +735,30 @@ class _TicketScreenState extends State<TicketScreen>
             width: double.infinity,
             height: 54, // Nút to, dễ bấm
             child: ElevatedButton(
-              onPressed: _handleBuyTicket,
+              onPressed: canBuy ? _handleBuyTicket : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.teal,
                 foregroundColor: Colors.white,
+                disabledBackgroundColor: AppColors.border,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(AppRadius.md),
                 ),
                 elevation: 0,
               ),
-              child: const Text(
-                'Thanh toán ngay',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              child: _isBuying
+                  ? const SizedBox(
+                      height: 22,
+                      width: 22,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
+                    )
+                  : Text(
+                      _isSelectedDateBookable
+                          ? 'Thanh toán ngay'
+                          : 'Ngày đã hết hạn đặt',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
             ),
           ),
         ],
@@ -731,6 +933,17 @@ class _TicketScreenState extends State<TicketScreen>
 
   Future<void> _handleBuyTicket() async {
     if (_selectedRoute == null) return;
+    if (!_isSelectedDateBookable) {
+      setState(() => _buyError =
+          'Ngày chạy đã chọn đã quá hạn đặt vé (22:00 hôm trước). Vui lòng chọn ngày khác.');
+      return;
+    }
+
+    setState(() {
+      _isBuying = true;
+      _buyError = null;
+    });
+
     final route = _routes.firstWhere((r) => r.id == _selectedRoute);
     final routeLabel = route.label.split(': ').last;
     Map<String, dynamic> ticket;
@@ -743,13 +956,17 @@ class _TicketScreenState extends State<TicketScreen>
       );
       await _loadTickets();
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Không thể mua vé: $e')));
+      if (!mounted) return;
+      setState(() {
+        _isBuying = false;
+        _buyError = _friendlyBuyError(e);
+      });
       return;
     }
+
     if (!mounted) return;
+    setState(() => _isBuying = false);
+
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.white,
@@ -863,6 +1080,27 @@ class _TicketScreenState extends State<TicketScreen>
       ),
     );
   }
+
+  /// Chuyển lỗi kỹ thuật (Exception message tu ApiService) thanh thong bao
+  /// de hieu hon cho nguoi dung, thay vi hien nguyen "Exception: ...".
+  String _friendlyBuyError(Object error) {
+    final msg = error.toString();
+    if (msg.contains('401')) {
+      return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+    }
+    if (msg.contains('409') || msg.toLowerCase().contains('trùng')) {
+      return 'Bạn đã đặt vé cho ca này rồi. Vui lòng kiểm tra ở tab "Vé của tôi".';
+    }
+    if (msg.toLowerCase().contains('22:00') ||
+        msg.toLowerCase().contains('deadline')) {
+      return 'Đã quá hạn đặt vé cho ngày này (22:00 hôm trước).';
+    }
+    if (msg.contains('SocketException') || msg.contains('TimeoutException')) {
+      return 'Không thể kết nối máy chủ. Vui lòng kiểm tra mạng và thử lại.';
+    }
+    // Loai bo tien to "Exception: " de hien thi gon hon.
+    return msg.replaceFirst('Exception: ', '');
+  }
 }
 
 class _Route {
@@ -894,4 +1132,13 @@ class _MyTicket {
     this.color,
     this.qrData,
   );
+}
+
+/// Một lựa chọn ngày chạy trong bộ chọn ngày, kèm hạn chót đặt vé (22:00
+/// giờ Việt Nam của ngày liền trước) và trạng thái còn đặt được hay không.
+class _ServiceDateOption {
+  final DateTime date;
+  final DateTime deadline;
+  final bool bookable;
+  const _ServiceDateOption(this.date, this.deadline, this.bookable);
 }
