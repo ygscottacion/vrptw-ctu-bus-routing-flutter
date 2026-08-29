@@ -24,6 +24,8 @@ class _DriverHomeTabState extends State<DriverHomeTab>
   late Animation<double> _pulseAnimation;
   bool _isShiftActive = false;
   List<dynamic> _assignedRoutes = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -47,15 +49,28 @@ class _DriverHomeTabState extends State<DriverHomeTab>
   }
 
   Future<void> _loadDriverRoutes() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
       final driverId = widget.user['id'] as int? ?? 1;
       final routes = await widget.api.fetchDriverRoutes(driverId);
       if (mounted) {
         setState(() {
           _assignedRoutes = routes;
+          _isLoading = false;
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Không thể tải danh sách tuyến: $e';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _toggleShift() {
@@ -230,7 +245,66 @@ class _DriverHomeTabState extends State<DriverHomeTab>
               const SizedBox(height: 16),
 
               // Up Next Route Card
-              if (nextRoute != null)
+              if (_isLoading)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 40),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.shade200, width: 1),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: const [
+                        CircularProgressIndicator(color: AppColors.teal),
+                        SizedBox(height: 16),
+                        Text('Đang tải dữ liệu chuyến đi...', style: TextStyle(color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_errorMessage != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.red.shade200, width: 1),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(Icons.error_outline_rounded, size: 48, color: Colors.red[400]),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Lỗi tải dữ liệu',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: _loadDriverRoutes,
+                        icon: const Icon(Icons.refresh_rounded, color: AppColors.teal),
+                        label: const Text('Thử lại', style: TextStyle(color: AppColors.teal)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: AppColors.teal),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (nextRoute != null)
                 Container(
                   decoration: BoxDecoration(
                     color: Colors.white,
