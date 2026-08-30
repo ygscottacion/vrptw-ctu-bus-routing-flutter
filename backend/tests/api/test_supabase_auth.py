@@ -89,17 +89,13 @@ def ensure_auth_user(db_session: Session, user_id: uuid.UUID):
 
 @pytest.fixture(scope="function")
 def db_session():
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("""
-                CREATE SCHEMA IF NOT EXISTS auth;
-                CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY, aud VARCHAR, role VARCHAR);
-                DROP TABLE IF EXISTS profiles, incidents, route_stops, tickets, bookings, routes, vehicles, locations, route_jobs, idempotency_keys CASCADE;
-                DROP TYPE IF EXISTS route_status, ticket_status, route_job_status, incident_status, bookingstatus, profile_role CASCADE;
-            """))
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth;"))
+            conn.execute(text("CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY, aud VARCHAR DEFAULT 'authenticated', role VARCHAR DEFAULT 'authenticated');"))
             conn.commit()
-    except Exception:
-        pass
+        except Exception:
+            pass
     Base.metadata.create_all(bind=engine)
     session = SessionLocal()
     yield session
@@ -126,7 +122,7 @@ def test_role_guards_passenger(db_session: Session):
     ensure_auth_user(db_session, user_id)
 
     profile = Profile(id=user_id, role=ProfileRole.PASSENGER, full_name="Student Test")
-    db_session.add(profile)
+    db_session.merge(profile)
     db_session.commit()
 
     token = make_token(sub=str(user_id))
@@ -154,7 +150,7 @@ def test_role_guards_driver(db_session: Session):
     ensure_auth_user(db_session, user_id)
 
     profile = Profile(id=user_id, role=ProfileRole.DRIVER, full_name="Driver Test")
-    db_session.add(profile)
+    db_session.merge(profile)
     db_session.commit()
 
     token = make_token(sub=str(user_id))
@@ -173,7 +169,7 @@ def test_role_guards_admin(db_session: Session):
     ensure_auth_user(db_session, user_id)
 
     profile = Profile(id=user_id, role=ProfileRole.ADMIN, full_name="Admin Test")
-    db_session.add(profile)
+    db_session.merge(profile)
     db_session.commit()
 
     token = make_token(sub=str(user_id))

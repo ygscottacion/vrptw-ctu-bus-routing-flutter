@@ -1,4 +1,4 @@
-"""Cutover all primary and foreign keys to UUID, add route_jobs, idempotency_keys, and run constraints
+"""Cutover all primary and foreign keys to UUID, add route_jobs, idempotency_keys, bookings, incidents, and run constraints
 
 Revision ID: 20260830_uuid_cutover
 Revises: 20260829_fk_indexes
@@ -22,12 +22,7 @@ def upgrade() -> None:
             IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'route_job_status') THEN
                 CREATE TYPE route_job_status AS ENUM ('queued', 'running', 'succeeded', 'failed');
             END IF;
-        END$$;
-    """)
 
-    op.execute("""
-        DO $$
-        BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ticket_status') THEN
                 CREATE TYPE ticket_status AS ENUM ('reserved', 'assigned', 'used', 'cancelled', 'expired');
             ELSE
@@ -35,20 +30,33 @@ def upgrade() -> None:
                 ALTER TYPE ticket_status ADD VALUE IF NOT EXISTS 'assigned';
                 ALTER TYPE ticket_status ADD VALUE IF NOT EXISTS 'cancelled';
             END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'route_status') THEN
+                CREATE TYPE route_status AS ENUM ('pending', 'in_progress', 'completed');
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'bookingstatus') THEN
+                CREATE TYPE bookingstatus AS ENUM ('confirmed', 'cancelled', 'completed');
+            END IF;
+
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'incident_status') THEN
+                CREATE TYPE incident_status AS ENUM ('pending', 'processing', 'resolved');
+            END IF;
         END$$;
     """)
 
     # Drop existing tables if converting fresh staging DB to UUID safely
+    op.execute("DROP TABLE IF EXISTS incidents CASCADE;")
+    op.execute("DROP TABLE IF EXISTS idempotency_keys CASCADE;")
+    op.execute("DROP TABLE IF EXISTS bookings CASCADE;")
     op.execute("DROP TABLE IF EXISTS route_stops CASCADE;")
     op.execute("DROP TABLE IF EXISTS tickets CASCADE;")
-    op.execute("DROP TABLE IF EXISTS bookings CASCADE;")
     op.execute("DROP TABLE IF EXISTS routes CASCADE;")
+    op.execute("DROP TABLE IF EXISTS route_jobs CASCADE;")
     op.execute("DROP TABLE IF EXISTS vehicles CASCADE;")
     op.execute("DROP TABLE IF EXISTS locations CASCADE;")
-    op.execute("DROP TABLE IF EXISTS route_jobs CASCADE;")
-    op.execute("DROP TABLE IF EXISTS idempotency_keys CASCADE;")
 
-    # 2. Re-create tables with UUID
+    # 2. Re-create tables with UUID (In strict dependency order)
     op.create_table(
         "locations",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -128,6 +136,32 @@ def upgrade() -> None:
     )
     op.create_index("ix_tickets_run_status", "tickets", ["service_date", "session_id", "trip_type", "status"])
 
+    bookingstatus = postgresql.ENUM("confirmed", "cancelled", "completed", name="bookingstatus", create_type=False)
+    op.create_table(
+        "bookings",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("ticket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, unique=True, index=True),
+        sa.Column("route_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("routes.id", ondelete="SET NULL"), nullable=True, index=True),
+        sa.Column("pickup_location_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("locations.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("schedule_time", sa.String(), nullable=True),
+        sa.Column("note", sa.String(), nullable=True),
+        sa.Column("status", bookingstatus, nullable=False, server_default="confirmed"),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    )
+
+    incident_status = postgresql.ENUM("pending", "processing", "resolved", name="incident_status", create_type=False)
+    op.create_table(
+        "incidents",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("driver_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("vehicle_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True, index=True),
+        sa.Column("title", sa.String(length=255), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("status", incident_status, nullable=False, server_default="pending"),
+        sa.Column("reported_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    )
+
     op.create_table(
         "idempotency_keys",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -144,6 +178,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("idempotency_keys")
+    op.drop_table("incidents")
+    op.drop_table("bookings")
     op.drop_table("tickets")
     op.drop_table("route_stops")
     op.drop_table("routes")
