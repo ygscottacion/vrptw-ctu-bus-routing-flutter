@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "20260830_uuid_cutover"
-down_revision = "20260829_fk_indexes"
+down_revision = "20260829_auth_trigger"
 branch_labels = None
 depends_on = None
 

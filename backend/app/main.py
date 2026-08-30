@@ -13,9 +13,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Tự động tạo tất cả các bảng chưa có trong DB
-#Base.metadata.create_all(bind=engine)
-
 # Set all CORS enabled origins
 app.add_middleware(
     CORSMiddleware,
