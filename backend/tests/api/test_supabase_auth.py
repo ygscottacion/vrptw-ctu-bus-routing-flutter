@@ -89,6 +89,17 @@ def ensure_auth_user(db_session: Session, user_id: uuid.UUID):
 
 @pytest.fixture(scope="function")
 def db_session():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                CREATE SCHEMA IF NOT EXISTS auth;
+                CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY, aud VARCHAR, role VARCHAR);
+                DROP TABLE IF EXISTS profiles, incidents, route_stops, tickets, bookings, routes, vehicles, locations, route_jobs, idempotency_keys CASCADE;
+                DROP TYPE IF EXISTS route_status, ticket_status, route_job_status, incident_status, bookingstatus, profile_role CASCADE;
+            """))
+            conn.commit()
+    except Exception:
+        pass
     Base.metadata.create_all(bind=engine)
     session = SessionLocal()
     yield session
@@ -228,7 +239,7 @@ def test_auto_create_passenger_profile_if_missing(db_session: Session):
     assert db_profile.role == ProfileRole.PASSENGER
 
 
-def test_concurrent_auto_create_profile():
+def test_concurrent_auto_create_profile(db_session: Session):
     new_user_id = uuid.uuid4()
     token = make_token(sub=str(new_user_id))
 
