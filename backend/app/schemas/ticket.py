@@ -1,31 +1,43 @@
 import datetime
 from typing import Optional
+from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.ticket import TicketStatus
 
-class TicketBase(BaseModel):
-    route_id: Optional[int] = None
 
-# Thay thế TicketCreate bằng TicketPurchase để mua theo số lượng
-class TicketPurchase(BaseModel):
-    """One daily ticket, booked for a stop and a fixed operating session."""
+class TicketReserveRequest(BaseModel):
+    """Payload for reserving a ticket for a specific date, session, trip type, and pickup location."""
     service_date: datetime.date
-    session_id: str = Field(pattern="^(MORNING_1|MORNING_2|NOON_1|NOON_2)$")
-    trip_type: str = Field(pattern="^(pickup|dropoff)$")
-    pickup_location_id: int
+    session_id: str = Field(pattern="^(MORNING_1|MORNING_2|NOON_1|NOON_2)$", description="Session ID (MORNING_1, MORNING_2, NOON_1, NOON_2)")
+    trip_type: str = Field(pattern="^(pickup|dropoff)$", description="Trip type (pickup or dropoff)")
+    pickup_location_id: UUID
 
-class TicketResponse(TicketBase):
-    id: int
-    user_id: int
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "service_date": "2026-09-01",
+                "session_id": "MORNING_1",
+                "trip_type": "pickup",
+                "pickup_location_id": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+            }
+        }
+    )
+
+
+class TicketResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    route_id: Optional[UUID] = None
+    service_date: datetime.date
+    session_id: str
+    trip_type: str
+    pickup_location_id: UUID
     qr_code: str
     status: TicketStatus
     created_at: datetime.datetime
-    service_date: Optional[datetime.date] = None
-    session_id: Optional[str] = None
-    trip_type: Optional[str] = None
-    pickup_location_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class QRVerifyRequest(BaseModel):
     qr_code: str

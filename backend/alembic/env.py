@@ -15,6 +15,10 @@ from app.models.user import User
 from app.models.location import Location
 from app.models.vehicle import Vehicle
 from app.models.route import Route, RouteStop
+from app.models.booking import Booking
+from app.models.incident import Incident
+from app.models.ticket import Ticket
+from app.models.profile import Profile
 
 config = context.config
 
