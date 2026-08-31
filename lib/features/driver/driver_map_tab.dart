@@ -89,7 +89,8 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _confirmToggle() async {
-    if (_id == 0 || _status == 'completed' || _busy) return;
+    final routeId = _id;
+    if (routeId == null || routeId.isEmpty || _status == 'completed' || _busy) return;
     final isStarting = _status != 'in_progress';
     final actionText = isStarting ? 'bắt đầu' : 'kết thúc';
     final confirm = await showDialog<bool>(
@@ -108,8 +109,8 @@ class _DriverMapTabState extends State<DriverMapTab>
         ),
         content: Text(
           isStarting
-              ? 'Bạn có chắc chắn muốn BẮT ĐẦU chuyến xe CT-${_id.toString().padLeft(2, '0')} không?'
-              : 'Bạn có chắc chắn muốn KẾT THÚC chuyến xe CT-${_id.toString().padLeft(2, '0')} không?',
+              ? 'Bạn có chắc chắn muốn BẮT ĐẦU chuyến xe $_routeCode không?'
+              : 'Bạn có chắc chắn muốn KẾT THÚC chuyến xe $_routeCode không?',
         ),
         actions: [
           TextButton(
@@ -153,8 +154,8 @@ class _DriverMapTabState extends State<DriverMapTab>
           SnackBar(
             content: Text(
               wasInProgress
-                  ? 'Đã kết thúc chuyến xe CT-${_id.toString().padLeft(2, '0')}.'
-                  : 'Đã bắt đầu chuyến xe CT-${_id.toString().padLeft(2, '0')}. Chúc bạn lái xe an toàn!',
+                  ? 'Đã kết thúc chuyến xe $_routeCode.'
+                  : 'Đã bắt đầu chuyến xe $_routeCode. Chúc bạn lái xe an toàn!',
             ),
             backgroundColor: wasInProgress ? const Color(0xFFD94E41) : AppColors.teal,
             behavior: SnackBarBehavior.floating,

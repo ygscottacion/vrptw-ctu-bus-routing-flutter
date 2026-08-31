@@ -58,7 +58,8 @@ class _DriverHomeTabState extends State<DriverHomeTab>
       _errorMessage = null;
     });
     try {
-      final routes = await widget.api.fetchDriverRoutes();
+      final driverId = widget.user['id']?.toString() ?? '';
+      final routes = await widget.api.fetchDriverRoutes(driverId);
       if (mounted) {
         setState(() {
           _assignedRoutes = routes;
