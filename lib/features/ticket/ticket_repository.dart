@@ -8,8 +8,9 @@ class TicketRepository {
 
   Future<List<dynamic>> fetchMyTickets() => _api.fetchMyTickets();
 
+  /// pickupLocationId la UUID (String) tu Ngay 4 - khong con la int.
   Future<Map<String, dynamic>> bookTicket({
-    required int pickupLocationId,
+    required String pickupLocationId,
     required DateTime serviceDate,
     required String sessionId,
     required String tripType,

@@ -6,7 +6,8 @@ import '../theme/app_theme.dart';
 import '../services/api_service.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  const MapScreen({super.key, required this.api});
+  final ApiService api;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -18,18 +19,25 @@ class _MapScreenState extends State<MapScreen> {
   double _busLat = 10.0300;
   double _busDir = 0.0002;
   Timer? _busTimer;
-  final ApiService _apiService = ApiService();
   List<_BusStop> _dynamicStops = [];
 
   static const _busStops = [
-    _BusStop(LatLng(10.0299, 105.7684), 'Depot - ĐH Cần Thơ (Khu II)', 'start', [1, 2, 3]),
-    _BusStop(LatLng(10.0342, 105.7876), 'Trạm 1 - Bến Ninh Kiều', 'mid', [1, 2]),
-    _BusStop(LatLng(10.0031, 105.7482), 'Trạm 2 - Chợ Cái Răng', 'mid', [1, 2, 3]),
-    _BusStop(LatLng(10.0461, 105.7891), 'Trạm 3 - Công viên Sông Hậu', 'highlight', [1]),
-    _BusStop(LatLng(10.0402, 105.7621), 'Trạm 4 - Siêu thị Lotte Mart', 'mid', [1, 3]),
-    _BusStop(LatLng(10.0215, 105.7531), 'Trạm 5 - Bệnh viện ĐKTW Cần Thơ', 'highlight', [2, 3]),
-    _BusStop(LatLng(10.0435, 105.7820), 'Trạm 6 - Chợ Đêm Trần Phú', 'end', [2]),
-    _BusStop(LatLng(10.0156, 105.7645), 'Trạm 7 - Siêu thị GO! Cần Thơ', 'mid', [3]),
+    _BusStop(LatLng(10.0299, 105.7684), 'Depot - ĐH Cần Thơ (Khu II)', 'start',
+        [1, 2, 3]),
+    _BusStop(
+        LatLng(10.0342, 105.7876), 'Trạm 1 - Bến Ninh Kiều', 'mid', [1, 2]),
+    _BusStop(
+        LatLng(10.0031, 105.7482), 'Trạm 2 - Chợ Cái Răng', 'mid', [1, 2, 3]),
+    _BusStop(LatLng(10.0461, 105.7891), 'Trạm 3 - Công viên Sông Hậu',
+        'highlight', [1]),
+    _BusStop(LatLng(10.0402, 105.7621), 'Trạm 4 - Siêu thị Lotte Mart', 'mid',
+        [1, 3]),
+    _BusStop(LatLng(10.0215, 105.7531), 'Trạm 5 - Bệnh viện ĐKTW Cần Thơ',
+        'highlight', [2, 3]),
+    _BusStop(
+        LatLng(10.0435, 105.7820), 'Trạm 6 - Chợ Đêm Trần Phú', 'end', [2]),
+    _BusStop(
+        LatLng(10.0156, 105.7645), 'Trạm 7 - Siêu thị GO! Cần Thơ', 'mid', [3]),
   ];
 
   static const _routeInfo = [
@@ -46,6 +54,8 @@ class _MapScreenState extends State<MapScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _loadBackendLocations();
     });
+    // TODO Ngay 6: xoa Timer gia lap nay, thay bang polling API vi tri that moi 15 giay
+    // (theo audit_lib_screens_day1.md - vi pham yeu cau MVP "khong hien thi xe gia").
     _busTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
       if (!mounted) return;
       setState(() {
@@ -59,7 +69,7 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadBackendLocations() async {
     try {
-      final data = await _apiService.fetchLocations();
+      final data = await widget.api.fetchLocations();
       if (data.isNotEmpty && mounted) {
         setState(() {
           _dynamicStops = data.map((item) {
@@ -167,7 +177,8 @@ class _MapScreenState extends State<MapScreen> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: isActive ? AppColors.white : AppColors.textSecondary,
+                      color:
+                          isActive ? AppColors.white : AppColors.textSecondary,
                     ),
                   ),
                 ),
@@ -228,7 +239,8 @@ class _MapScreenState extends State<MapScreen> {
                               blurRadius: 6)
                         ],
                       ),
-                      child: const Icon(Icons.circle, color: Colors.white, size: 10),
+                      child: const Icon(Icons.circle,
+                          color: Colors.white, size: 10),
                     ),
                   ),
                 )),
@@ -263,8 +275,8 @@ class _MapScreenState extends State<MapScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
-        borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(AppRadius.md)),
+        borderRadius:
+            const BorderRadius.vertical(top: Radius.circular(AppRadius.md)),
         boxShadow: [
           BoxShadow(
               color: Colors.black.withValues(alpha: 0.08),
@@ -330,15 +342,12 @@ class _MapScreenState extends State<MapScreen> {
                                       ? AppColors.red
                                       : AppColors.teal,
                               shape: BoxShape.circle,
-                              border: Border.all(
-                                  color: Colors.white, width: 2),
+                              border: Border.all(color: Colors.white, width: 2),
                             ),
                           ),
                           if (i < _routeInfo.length - 1)
                             Container(
-                                width: 2,
-                                height: 36,
-                                color: AppColors.border),
+                                width: 2, height: 36, color: AppColors.border),
                         ],
                       ),
                     ),
@@ -357,8 +366,7 @@ class _MapScreenState extends State<MapScreen> {
                             Text(
                               '${stop.time} - ${isFirst ? 'Điểm xuất phát' : isLast ? 'Điểm cuối' : 'Trạm dừng'}',
                               style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textMuted),
+                                  fontSize: 11, color: AppColors.textMuted),
                             ),
                           ],
                         ),
