@@ -36,6 +36,12 @@ class Route(Base):
     vehicle = relationship("Vehicle")
     route_job = relationship("RouteJob")
     stops = relationship("RouteStop", back_populates="route", cascade="all, delete-orphan")
+    tickets = relationship("Ticket", back_populates="route")
+
+    @property
+    def passenger_count(self) -> int:
+        """Authoritative assigned-passenger count for validation and API payloads."""
+        return sum(1 for ticket in self.tickets if ticket.status == "assigned")
 
     __table_args__ = (
         Index("ix_routes_run", "service_date", "session_id", "trip_type"),

@@ -43,7 +43,7 @@ class Ticket(Base):
 
     # Relationships
     user = relationship("Profile")
-    route = relationship("Route")
+    route = relationship("Route", back_populates="tickets")
     pickup_location = relationship("Location")
 
     __table_args__ = (

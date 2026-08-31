@@ -1,316 +1,237 @@
-import uuid
-import logging
+"""Persist VRPTW solver output safely using technical solver node keys."""
 import datetime
-from zoneinfo import ZoneInfo
-from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy import text, func
+import logging
+import traceback
+import uuid
+from types import MappingProxyType
+from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
-from app.models.location import Location
-from app.models.vehicle import Vehicle
-from app.models.ticket import Ticket, TicketStatus
-from app.models.route import Route, RouteStop, RouteStatus
-from app.models.route_job import RouteJob, RouteJobStatus
-from app.services.vrptw_solver import VRPTWSolverService
-from app.services.student_routing.schemas import SessionId, TripType
+from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 
 from app.core.timezone import VN_TZ
+from app.models.location import Location
+from app.models.route import Route, RouteStatus, RouteStop
+from app.models.route_job import RouteJob, RouteJobStatus
+from app.models.ticket import Ticket, TicketStatus
+from app.models.vehicle import Vehicle
+from app.services.student_routing.schemas import SessionId, TripType
+from app.services.vrptw_solver import VRPTWSolverService
 
 logger = logging.getLogger(__name__)
 
 
-def _build_uuid_lookup(location_dicts: List[Dict]) -> Dict[str, uuid.UUID]:
+def _db_id(db: Session, value: uuid.UUID | str) -> uuid.UUID | str:
+    """Bind UUIDs correctly for PostgreSQL and SQLite test schemas.
+
+    Supabase/PostgreSQL receives UUID instances. SQLite tests may compile UUID
+    columns to either VARCHAR or native UUID depending on their fixture.
     """
-    Xây dựng bảng tra cứu: station_id string → UUID gốc.
-    Giải quyết BUG-VRPTW-01: solver có thể trả về id không phải UUID hợp lệ.
-    Ta cần ánh xạ ngược từ id string đã truyền vào solver → UUID DB gốc.
+    parsed = uuid.UUID(str(value))
+    # Some legacy SQLite tests replace the column type with String globally;
+    # inspect the actual mapped column instead of treating every SQLite UUID as
+    # text. Supabase/PostgreSQL always keeps PostgreSQLUUID.
+    return parsed if isinstance(RouteJob.__table__.c.id.type, PostgreSQLUUID) else str(parsed)
+
+
+class UnmappedSolverNodeError(Exception):
+    """A solver key was not present in the worker-created UUID mapping."""
+    error_code = "UNMAPPED_SOLVER_NODE"
+
+    def __init__(self, node_key: str, route_job_id: str):
+        self.node_key, self.route_job_id = node_key, route_job_id
+        super().__init__(f"Solver node key {node_key!r} is not mapped for route job {route_job_id}.")
+
+
+class RouteStopValidationError(Exception):
+    def __init__(self, route_job_id: str, message: str, error_code: str = "ROUTE_STOP_VALIDATION_ERROR"):
+        self.route_job_id, self.error_code = route_job_id, error_code
+        super().__init__(message)
+
+
+def _build_uuid_lookup(depot_loc_id: uuid.UUID, locations: Sequence[Location], location_dicts: Sequence[Mapping[str, Any]]) -> Mapping[str, uuid.UUID]:
+    """Return immutable technical node-key -> database UUID mapping.
+
+    ``location_N`` is canonical. Numeric node indexes are accepted only for
+    backward-compatible solver responses; neither is parsed as a UUID.
     """
-    lookup: Dict[str, uuid.UUID] = {}
-    for loc in location_dicts:
-        loc_id_str = str(loc["id"])
-        try:
-            lookup[loc_id_str] = uuid.UUID(loc_id_str)
-        except (ValueError, AttributeError):
-            logger.warning(f"Location id không phải UUID hợp lệ: {loc_id_str!r} — bỏ qua.")
-    return lookup
+    if len(locations) != len(location_dicts):
+        raise ValueError("locations and location_dicts must have the same length")
+    lookup: Dict[str, uuid.UUID] = {"depot": uuid.UUID(str(depot_loc_id)), "SCHOOL": uuid.UUID(str(depot_loc_id))}
+    for index, (location, data) in enumerate(zip(locations, location_dicts)):
+        location_id = uuid.UUID(str(location.id))
+        lookup[str(data.get("id", f"location_{index}"))] = location_id
+        lookup[f"location_{index}"] = location_id
+        lookup[str(index)] = location_id
+    return MappingProxyType(lookup)
+
+
+def _lookup_solver_node(uuid_lookup: Mapping[str, uuid.UUID], node_key: object, route_job_id: str) -> uuid.UUID:
+    key = str(node_key)
+    try:
+        return uuid_lookup[key]
+    except KeyError as exc:
+        raise UnmappedSolverNodeError(key, route_job_id) from exc
+
+
+def _parse_solver_time(value: object, service_date: datetime.date) -> datetime.datetime | None:
+    if value in (None, ""):
+        return None
+    try:
+        hour, minute = map(int, str(value).split(":"))
+        return datetime.datetime.combine(service_date, datetime.time(hour=hour, minute=minute), tzinfo=VN_TZ).astimezone(datetime.timezone.utc)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid solver arrival_time {value!r}") from exc
+
+
+def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route, Sequence[RouteStop], Sequence[Ticket]]], expected_tickets_count: int, depot_location_id: str) -> None:
+    """Validate stops, assignments and passenger counts before SUCCEEDED."""
+    if not created_routes:
+        raise RouteStopValidationError(job_id, "Solver returned no routes.")
+    assigned_ids: set[str] = set()
+    actual_stops = 0
+    for route, stops, tickets in created_routes:
+        if len(stops) != len(tickets) + 1:
+            raise RouteStopValidationError(job_id, f"Route {route.id} has {len(stops)} stops for {len(tickets)} tickets.", "ROUTE_STOP_COUNT_MISMATCH")
+        if not stops or str(stops[0].location_id) != str(depot_location_id) or stops[0].stop_order != 1:
+            raise RouteStopValidationError(job_id, f"Route {route.id} has no valid depot at stop 1.")
+        if any(stop.stop_order != index + 1 for index, stop in enumerate(stops)):
+            raise RouteStopValidationError(job_id, f"Route {route.id} has non-contiguous stop_order values.")
+        pickup_ids = [str(stop.location_id) for stop in stops[1:]]
+        ticket_location_ids = [str(ticket.pickup_location_id) for ticket in tickets]
+        if len(pickup_ids) != len(set(pickup_ids)):
+            raise RouteStopValidationError(job_id, f"Route {route.id} has duplicate pickup UUIDs.")
+        if set(pickup_ids) != set(ticket_location_ids) or len(ticket_location_ids) != len(set(ticket_location_ids)):
+            raise RouteStopValidationError(job_id, f"Route {route.id} stops and tickets are not one-to-one.", "ROUTE_STOP_COUNT_MISMATCH")
+        if any(ticket.status != TicketStatus.ASSIGNED or ticket.route is not route for ticket in tickets):
+            raise RouteStopValidationError(job_id, f"Route {route.id} contains an unassigned ticket.")
+        if route.passenger_count != len(tickets):
+            raise RouteStopValidationError(job_id, f"Route {route.id} passenger_count mismatch.")
+        actual_stops += len(stops)
+        assigned_ids.update(str(ticket.id) for ticket in tickets)
+    if len(assigned_ids) != expected_tickets_count:
+        raise RouteStopValidationError(job_id, f"Assigned {len(assigned_ids)} of {expected_tickets_count} tickets.", "ROUTE_STOP_COUNT_MISMATCH")
+    if actual_stops != expected_tickets_count + len(created_routes):
+        raise RouteStopValidationError(job_id, "Total stop count does not equal depot + assigned tickets.", "ROUTE_STOP_COUNT_MISMATCH")
+
+
+def _record_failed_job(db: Session, job_id: uuid.UUID, error_code: str, message: str, stack_trace: str) -> None:
+    """Persist failure in a new transaction after the write transaction rolls back."""
+    with db.begin():
+        job = db.query(RouteJob).filter(RouteJob.id == job_id).first()
+        if job:
+            job.status = RouteJobStatus.FAILED
+            job.error_message = f"[{error_code}] {message}\n{stack_trace}"
+            job.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
 
 def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
-    """
-    Chạy job sinh tuyến một cách nguyên tử trong PostgreSQL.
-    Nhận job (queued → running), chạy VRPTW solver, lưu routes/stops/ticket assignments.
-    Cập nhật trạng thái job thành succeeded hoặc failed an toàn.
-
-    Fix BUG-VRPTW-01:
-    - Dùng uuid_lookup để ánh xạ station_id từ solver → UUID DB gốc (không cast blindly).
-    - Toàn bộ route_stops cho một route nằm trong một savepoint; lỗi ở stop bất kỳ
-      sẽ rollback toàn bộ route đó, job chuyển FAILED với lý do cụ thể.
-    - Sau commit, kiểm tra count(route_stops) khớp số điểm đón; nếu lệch → FAILED.
-    """
-    # Chuẩn hoá job_id → str để filter hoạt động trên cả PostgreSQL và SQLite (test).
-    job_id_filter = str(job_id)
-
-    # Dùng SELECT FOR UPDATE trên PostgreSQL để tránh concurrent worker chạy cùng job.
-    # SQLite không hỗ trợ row-level locking → dùng plain query.
-    is_sqlite = db.bind.dialect.name == "sqlite" if db.bind else False
-    if is_sqlite:
-        job = db.query(RouteJob).filter(RouteJob.id == job_id_filter).first()
-    else:
-        job = (
-            db.query(RouteJob)
-            .filter(RouteJob.id == job_id_filter)
-            .with_for_update(skip_locked=True)
-            .first()
-        )
-
+    """Create routes/stops, assign tickets and set SUCCEEDED in one transaction."""
+    job_id_uuid = uuid.UUID(str(job_id))
+    job_id_str = str(job_id_uuid)
+    job_db_id = _db_id(db, job_id_uuid)
+    job = db.query(RouteJob).filter(RouteJob.id == job_db_id).first()
     if not job:
-        raise ValueError(f"Job {job_id} not found.")
-
+        raise ValueError(f"Route job {job_id} does not exist.")
     if job.status == RouteJobStatus.SUCCEEDED:
         return job
 
+    # A separate lifecycle commit is safe: no route, stop, ticket, or SUCCEEDED data exists yet.
     job.status = RouteJobStatus.RUNNING
     job.updated_at = datetime.datetime.now(datetime.timezone.utc)
     db.commit()
 
     try:
-        # 1. Fetch Depot
-        depot_loc = db.query(Location).filter(Location.id == job.depot_location_id).first()
-        if not depot_loc:
-            raise ValueError(f"Depot location {job.depot_location_id} not found.")
+        with db.begin():
+            job = db.query(RouteJob).filter(RouteJob.id == job_db_id).with_for_update().one()
+            depot_id = uuid.UUID(str(job.depot_location_id))
+            depot = db.query(Location).filter(Location.id == _db_id(db, depot_id)).one_or_none()
+            if not depot:
+                raise ValueError(f"Depot {job.depot_location_id} does not exist.")
+            tickets = db.query(Ticket).filter(Ticket.service_date == job.service_date, Ticket.session_id == job.session_id, Ticket.trip_type == job.trip_type, Ticket.status == TicketStatus.RESERVED).with_for_update().all()
+            if not tickets:
+                raise RouteStopValidationError(job_id_str, "No RESERVED tickets found.", "DATABASE_WRITE_FAILED")
 
-        depot_dict = {
-            "id": str(depot_loc.id),
-            "name": depot_loc.name,
-            "latitude": depot_loc.latitude,
-            "longitude": depot_loc.longitude,
-        }
+            tickets_by_location: Dict[str, List[Ticket]] = {}
+            for ticket in tickets:
+                tickets_by_location.setdefault(str(ticket.pickup_location_id), []).append(ticket)
+            location_ids = [_db_id(db, location_id) for location_id in tickets_by_location]
+            locations = db.query(Location).filter(Location.id.in_(location_ids)).order_by(Location.id).all()
+            if len(locations) != len(location_ids):
+                raise ValueError("One or more pickup locations no longer exist.")
+            location_dicts: List[Dict[str, Any]] = []
+            for index, location in enumerate(locations):
+                demand = len(tickets_by_location[str(location.id)])
+                if demand != 1:
+                    raise RouteStopValidationError(job_id_str, f"Pickup {location.id} has {demand} tickets but RouteStop is one-to-one.", "ROUTE_STOP_COUNT_MISMATCH")
+                location_dicts.append({"id": f"location_{index}", "name": location.name, "latitude": location.latitude, "longitude": location.longitude, "demand": demand, "time_window_start": location.time_window_start.strftime("%H:%M") if location.time_window_start else "06:00", "time_window_end": location.time_window_end.strftime("%H:%M") if location.time_window_end else "07:30"})
+            uuid_lookup = _build_uuid_lookup(depot_id, locations, location_dicts)
 
-        # 2. Fetch Reserved Tickets for this run
-        tickets = (
-            db.query(Ticket)
-            .filter(
-                Ticket.service_date == job.service_date,
-                Ticket.session_id == job.session_id,
-                Ticket.trip_type == job.trip_type,
-                Ticket.status == TicketStatus.RESERVED,
+            vehicles = db.query(Vehicle).all()
+            if not vehicles:
+                raise ValueError("No vehicles available for route generation.")
+            try:
+                session_id, trip_type = SessionId(job.session_id), TripType(job.trip_type.upper())
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid job session/trip type: {job.session_id}/{job.trip_type}") from exc
+            solved_routes = VRPTWSolverService().solve(
+                depot={"id": "depot", "name": depot.name, "latitude": depot.latitude, "longitude": depot.longitude},
+                locations=location_dicts,
+                vehicles=[{"id": str(vehicle.id), "capacity": vehicle.capacity, "license_plate": vehicle.license_plate} for vehicle in vehicles],
+                session_id=session_id, trip_type=trip_type,
             )
-            .all()
-        )
+            if not solved_routes:
+                raise RouteStopValidationError(job_id_str, "Solver found no feasible route.")
 
-        if not tickets:
-            job.status = RouteJobStatus.FAILED
-            job.error_message = "Không có vé ở trạng thái RESERVED nào cho chuyến chạy này."
-            job.updated_at = datetime.datetime.now(datetime.timezone.utc)
-            db.commit()
-            return job
-
-        # Group demand per pickup location — dùng str key để tương thích cả PostgreSQL (UUID) và SQLite (str)
-        location_demands: Dict[str, int] = {}
-        tickets_by_location: Dict[str, List[Ticket]] = {}
-
-        for t in tickets:
-            loc_key = str(t.pickup_location_id)
-            location_demands[loc_key] = location_demands.get(loc_key, 0) + 1
-            tickets_by_location.setdefault(loc_key, []).append(t)
-
-        loc_ids = list(location_demands.keys())
-        locations = db.query(Location).filter(Location.id.in_(loc_ids)).all()
-
-        location_dicts = []
-        for loc in locations:
-            loc_id_str = str(loc.id)
-            location_dicts.append({
-                "id": loc_id_str,
-                "name": loc.name,
-                "latitude": loc.latitude,
-                "longitude": loc.longitude,
-                "demand": location_demands.get(loc_id_str, 1),
-                "time_window_start": loc.time_window_start.strftime("%H:%M") if loc.time_window_start else "06:00",
-                "time_window_end": loc.time_window_end.strftime("%H:%M") if loc.time_window_end else "07:30",
-            })
-
-        # Xây dựng bảng tra cứu uuid: station_id_str → uuid.UUID (FIX BUG-VRPTW-01)
-        uuid_lookup = _build_uuid_lookup(location_dicts)
-        # Số điểm đón kỳ vọng = số location duy nhất
-        expected_stop_count_per_route = len(loc_ids)
-
-        # 3. Fetch Vehicles
-        vehicles = db.query(Vehicle).all()
-        if not vehicles:
-            raise ValueError("Không tìm thấy xe buýt nào trong cơ sở dữ liệu.")
-
-        vehicle_dicts = [
-            {"id": str(v.id), "capacity": v.capacity, "license_plate": v.license_plate}
-            for v in vehicles
-        ]
-        vehicle_by_id: Dict[str, Vehicle] = {str(v.id): v for v in vehicles}
-
-        # 4. Run VRPTW Solver Pipeline
-        session_enum = SessionId.MORNING_1
-        try:
-            session_enum = SessionId(job.session_id)
-        except Exception:
-            pass
-
-        trip_enum = TripType.PICKUP
-        try:
-            trip_enum = TripType(job.trip_type)
-        except Exception:
-            pass
-
-        solver = VRPTWSolverService()
-        solved_routes = solver.solve(
-            depot=depot_dict,
-            locations=location_dicts,
-            vehicles=vehicle_dicts,
-            session_id=session_enum,
-            trip_type=trip_enum,
-        )
-
-        if not solved_routes:
-            raise ValueError("Thuật toán VRPTW không tìm thấy phương án phân bổ tuyến khả thi.")
-
-        # 5. Persist Routes, Stops & Ticket Assignments — toàn bộ trong 1 transaction
-        # Theo dõi tổng số stops đã ghi để verify cuối cùng
-        total_stops_written = 0
-        total_stops_expected = 0
-
-        for route_info in solved_routes:
-            v_id_str = route_info.get("vehicle_id")
-            v_id: Optional[uuid.UUID] = None
-            if v_id_str:
+            created_routes: List[Tuple[Route, List[RouteStop], List[Ticket]]] = []
+            assigned_ids: set[str] = set()
+            for route_info in solved_routes:
+                vehicle_id = route_info.get("vehicle_id")
                 try:
-                    v_id = uuid.UUID(v_id_str)
-                except Exception:
-                    logger.warning(f"vehicle_id không hợp lệ: {v_id_str!r}")
-
-            new_route = Route(
-                id=str(uuid.uuid4()),
-                route_job_id=str(job.id),
-                service_date=job.service_date,
-                session_id=job.session_id,
-                trip_type=job.trip_type,
-                vehicle_id=str(v_id) if v_id else None,
-                status=RouteStatus.PENDING.value,
-                total_distance=float(route_info.get("total_distance_km", 0.0)),
-            )
-            db.add(new_route)
-            db.flush()  # Lấy new_route.id trước khi ghi stops
-
-            ordered_stops = route_info.get("ordered_stops", [])
-            stop_order = 1
-            route_has_error = False
-            route_error_msg = ""
-
-            for stop_data in ordered_stops:
-                station_id_str = stop_data.get("id")
-                if not station_id_str:
-                    logger.warning(f"Stop thiếu trường 'id', bỏ qua: {stop_data!r}")
-                    continue
-
-                # FIX BUG-VRPTW-01: tra UUID từ lookup thay vì cast trực tiếp
-                stop_loc_uuid = uuid_lookup.get(str(station_id_str))
-                if stop_loc_uuid is None:
-                    # Thử cast trực tiếp (trường hợp solver trả UUID hợp lệ không nằm trong lookup)
-                    try:
-                        stop_loc_uuid = uuid.UUID(str(station_id_str))
-                    except (ValueError, AttributeError):
-                        route_has_error = True
-                        route_error_msg = (
-                            f"Stop id không thể ánh xạ sang UUID: {station_id_str!r}. "
-                            f"Kiểm tra data contract giữa solver và worker."
-                        )
-                        logger.error(route_error_msg)
-                        break
-
-                # Parse arrival time
-                arr_time_str = stop_data.get("arrival_time")
-                arr_dt = None
-                if arr_time_str:
-                    try:
-                        h, m = map(int, arr_time_str.split(":"))
-                        arr_dt = datetime.datetime.combine(
-                            job.service_date,
-                            datetime.time(hour=h, minute=m),
-                            tzinfo=VN_TZ,
-                        ).astimezone(datetime.timezone.utc)
-                    except Exception:
-                        arr_dt = datetime.datetime.now(datetime.timezone.utc)
-
-                # str(stop_loc_uuid): tương thích cả PostgreSQL (auto-cast) và SQLite (String(36))
-                route_stop = RouteStop(
-                    id=str(uuid.uuid4()),
-                    route_id=str(new_route.id),
-                    location_id=str(stop_loc_uuid),
-                    arrival_time=arr_dt,
-                    stop_order=stop_order,
-                )
-                db.add(route_stop)
-                total_stops_written += 1
-
-                # Gán ticket tại điểm đón này sang route (key là str)
-                matching_tickets = tickets_by_location.get(str(station_id_str), [])
-                for t in matching_tickets:
-                    t.route_id = str(new_route.id)
-                    t.status = TicketStatus.ASSIGNED
-
-                stop_order += 1
-
-            if route_has_error:
-                # Rollback toàn bộ và fail job
-                db.rollback()
-                job = db.query(RouteJob).filter(RouteJob.id == job_id_filter).first()
-                if job:
-                    job.status = RouteJobStatus.FAILED
-                    job.error_message = route_error_msg
-                    job.updated_at = datetime.datetime.now(datetime.timezone.utc)
-                    db.commit()
-                    db.refresh(job)
-                return job
-
-            total_stops_expected += len(ordered_stops)
-
-        # Commit toàn bộ
-        job.status = RouteJobStatus.SUCCEEDED
-        job.error_message = None
-        job.updated_at = datetime.datetime.now(datetime.timezone.utc)
-        db.commit()
-
-        # Post-commit verification: đếm route_stops thực tế (FIX BUG-VRPTW-01 item 5)
-        if total_stops_expected > 0 and total_stops_written < total_stops_expected:
-            logger.error(
-                f"Job {job_id}: route_stops count mismatch — "
-                f"written={total_stops_written}, expected={total_stops_expected}. "
-                f"Chuyển job sang FAILED."
-            )
-            job = db.query(RouteJob).filter(RouteJob.id == job_id).first()
-            if job:
-                job.status = RouteJobStatus.FAILED
-                job.error_message = (
-                    f"Dữ liệu route_stops không đầy đủ: "
-                    f"ghi được {total_stops_written}/{total_stops_expected} stops."
-                )
-                job.updated_at = datetime.datetime.now(datetime.timezone.utc)
-                db.commit()
-                db.refresh(job)
-            return job
-
-        db.refresh(job)
-        logger.info(
-            f"Job {job_id} SUCCEEDED: {len(solved_routes)} route(s), "
-            f"{total_stops_written} stops, {len(tickets)} tickets assigned."
-        )
-        return job
-
+                    vehicle_id = uuid.UUID(str(vehicle_id)) if vehicle_id else None
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"Solver returned invalid vehicle UUID {vehicle_id!r}") from exc
+                route_id = uuid.uuid4()
+                route = Route(id=_db_id(db, route_id), route_job_id=job_db_id, service_date=job.service_date, session_id=job.session_id, trip_type=job.trip_type, vehicle_id=_db_id(db, vehicle_id) if vehicle_id else None, status=RouteStatus.PENDING, total_distance=float(route_info.get("total_distance_km", 0.0)))
+                db.add(route)
+                raw_stops = list(route_info.get("ordered_stops") or [])
+                if not raw_stops or str(raw_stops[0].get("id")) not in {"depot", "SCHOOL"}:
+                    raw_stops.insert(0, {"id": "depot", "arrival_time": "06:00"})
+                # Solver may include SCHOOL again as a return leg. RouteStop is
+                # the passenger pickup manifest, so persist exactly one depot.
+                raw_stops = [stop for index, stop in enumerate(raw_stops) if index == 0 or str(stop.get("id")) not in {"depot", "SCHOOL"}]
+                route_stops: List[RouteStop] = []
+                route_tickets: List[Ticket] = []
+                for stop_order, stop_data in enumerate(raw_stops, 1):
+                    if "id" not in stop_data or stop_data["id"] in (None, ""):
+                        raise RouteStopValidationError(job_id_str, f"Solver stop is missing id: {stop_data!r}")
+                    node_key = str(stop_data["id"])
+                    location_id = _lookup_solver_node(uuid_lookup, node_key, job_id_str)
+                    route_stop = RouteStop(id=_db_id(db, uuid.uuid4()), route_id=route.id, location_id=_db_id(db, location_id), stop_order=stop_order, arrival_time=_parse_solver_time(stop_data.get("arrival_time"), job.service_date))
+                    db.add(route_stop)
+                    route_stops.append(route_stop)
+                    if node_key not in {"depot", "SCHOOL"}:
+                        matching = tickets_by_location.get(str(location_id), [])
+                        if len(matching) != 1 or str(matching[0].id) in assigned_ids:
+                            raise RouteStopValidationError(job_id_str, f"Node {node_key!r} maps to an invalid or duplicate ticket.")
+                        ticket = matching[0]
+                        ticket.route, ticket.status = route, TicketStatus.ASSIGNED
+                        route_tickets.append(ticket)
+                        assigned_ids.add(str(ticket.id))
+                created_routes.append((route, route_stops, route_tickets))
+            _validate_route_and_stops(job_id_str, created_routes, len(tickets), str(depot.id))
+            job.status, job.error_message = RouteJobStatus.SUCCEEDED, None
+            job.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        logger.info("Route job %s succeeded with %s routes and %s tickets.", job_id, len(created_routes), len(tickets))
+        return db.query(RouteJob).filter(RouteJob.id == job_db_id).one()
     except Exception as exc:
         db.rollback()
-        logger.exception(f"Job {job_id} FAILED với exception: {exc}")
-        job = db.query(RouteJob).filter(RouteJob.id == job_id).first()
-        if job:
-            job.status = RouteJobStatus.FAILED
-            job.error_message = str(exc)
-            job.updated_at = datetime.datetime.now(datetime.timezone.utc)
-            db.commit()
-            db.refresh(job)
-        raise exc
+        stack_trace = traceback.format_exc()
+        error_code = getattr(exc, "error_code", "DATABASE_WRITE_FAILED")
+        logger.exception("Route job %s failed [%s]: %s", job_id, error_code, exc)
+        try:
+            _record_failed_job(db, job_db_id, error_code, str(exc), stack_trace)
+        except Exception:
+            db.rollback()
+            logger.exception("Could not persist FAILED status for route job %s", job_id)
+        raise

@@ -27,6 +27,20 @@ router = APIRouter()
 from app.core.timezone import VN_TZ
 
 
+def _route_job_response(job: RouteJob) -> dict[str, Any]:
+    """Serialize the ORM job using the public API field name ``job_id``."""
+    return {
+        "job_id": job.id,
+        "service_date": job.service_date,
+        "session_id": job.session_id,
+        "trip_type": job.trip_type,
+        "status": job.status,
+        "error_message": job.error_message,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+    }
+
+
 def verify_cron_secret(x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret")) -> str:
     """Verifies X-Cron-Secret header against environment settings using constant-time comparison."""
     if not x_cron_secret or not settings.CRON_SECRET:
@@ -122,16 +136,10 @@ def generate_routes(
 # Run worker process for the job
     try:
         updated_job = run_route_job_worker(db=db, job_id=new_job.id)
-        return {
-            "job_id": updated_job.id,
-            "status": updated_job.status
-        }
-    except Exception as e:
+        return _route_job_response(updated_job)
+    except Exception:
         db.refresh(new_job)
-        return {
-            "job_id": new_job.id,
-            "status": new_job.status
-        }
+        return _route_job_response(new_job)
 
 
 @router.get("", response_model=List[RouteResponse])
@@ -189,18 +197,6 @@ def read_routes(
 
     routes = query.order_by(Route.service_date.desc(), Route.session_id.asc()).all()
 
-    # Aggregate passenger_count for each route
-    for route in routes:
-        count = (
-            db.query(func.count(Ticket.id))
-            .filter(
-                Ticket.route_id == route.id,
-                Ticket.status == TicketStatus.ASSIGNED,
-            )
-            .scalar() or 0
-        )
-        setattr(route, "passenger_count", count)
-
     return routes
 
 
@@ -256,15 +252,5 @@ def read_route_detail(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Tuyến xe này không thuộc xe do bạn quản lý.",
             )
-
-    count = (
-        db.query(func.count(Ticket.id))
-        .filter(
-            Ticket.route_id == route.id,
-            Ticket.status == TicketStatus.ASSIGNED,
-        )
-        .scalar() or 0
-    )
-    setattr(route, "passenger_count", count)
 
     return route

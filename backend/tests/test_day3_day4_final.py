@@ -48,19 +48,8 @@ def _patch_metadata_for_sqlite(engine):
     from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
     from sqlalchemy import String, JSON
 
-    for table in Base.metadata.tables.values():
-        for col in table.columns:
-            if isinstance(col.type, PG_UUID):
-                col.type = String(36)
-            if isinstance(col.type, JSONB):
-                col.type = JSON()
-
-    # SQLEnum → String (SQLite không có native enum type)
-    from sqlalchemy import Enum as SAEnum
-    for table in Base.metadata.tables.values():
-        for col in table.columns:
-            if isinstance(col.type, SAEnum):
-                col.type = String(50)
+    # UUID compilation is supplied by tests/conftest.py. Do not mutate global
+    # SQLAlchemy metadata here: later tests use the same model definitions.
 
     # Remove partial indexes (postgresql_where) — không hỗ trợ trên SQLite
     for table in Base.metadata.tables.values():

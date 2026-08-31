@@ -42,7 +42,7 @@ class VRPTWSolverService:
         school_lng = depot.get("longitude", depot.get("lng", 105.7721))
 
         school_cfg = SchoolConfig(
-            school_id=str(depot.get("id", "SCHOOL")),
+            school_id="depot",
             school_name=depot.get("name", "Trường Đại học Cần Thơ"),
             location=LocationSchema(lat=school_lat, lng=school_lng)
         )
@@ -54,15 +54,18 @@ class VRPTWSolverService:
             ) for v in vehicles
         ]
 
+        # The public solver contract intentionally contains no persistence IDs.
+        # It always emits deterministic technical keys owned by this solve call.
         station_models = []
-        for loc in locations:
+        for idx, loc in enumerate(locations):
             st_lat = loc.get("latitude", loc.get("lat", 10.03))
             st_lng = loc.get("longitude", loc.get("lng", 105.77))
             demand = loc.get("demand", loc.get("pickup_student_count", 1))
 
+            node_key = f"location_{idx}"
             station_models.append(Station(
-                id=str(loc["id"]),
-                name=loc.get("name", f"Trạm #{loc['id']}"),
+                id=node_key,
+                name=loc.get("name", f"Trạm #{node_key}"),
                 location=LocationSchema(lat=st_lat, lng=st_lng),
                 time_window_start=loc.get("time_window_start", "06:00"),
                 time_window_end=loc.get("time_window_end", "06:30"),
@@ -87,10 +90,10 @@ class VRPTWSolverService:
             for route_obj in response.data.routes:
                 ordered_stops = []
                 for s in route_obj.stops:
-                    if s.station_id == "SCHOOL":
-                        continue
+                    # Trả về node key kỹ thuật (depot, location_0, ...)
+                    station_node_key = "depot" if s.station_id == "SCHOOL" or s.station_id == "depot" else s.station_id
                     ordered_stops.append({
-                        "id": s.station_id,       # Giữ nguyên UUID string gốc đã truyền vào
+                        "id": station_node_key,
                         "name": s.station_name,
                         "arrival_time": s.arrival_time,
                         "departure_time": s.departure_time,
