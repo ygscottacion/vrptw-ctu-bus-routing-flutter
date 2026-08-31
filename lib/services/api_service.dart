@@ -113,8 +113,8 @@ class ApiService {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_message(response));
     }
-    final data = json.decode(response.body) as List<dynamic>;
-    return Map<String, dynamic>.from(data.first as Map);
+    final data = json.decode(response.body) as Map<String, dynamic>;
+    return data;
   }
 
   /// routeId la UUID (String).
