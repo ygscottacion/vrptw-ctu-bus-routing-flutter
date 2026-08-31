@@ -11,7 +11,7 @@ from app.core.idempotency import process_idempotency_key, save_idempotency_key
 from app.models.profile import Profile
 from app.models.location import Location
 from app.models.ticket import Ticket, TicketStatus
-from app.schemas.ticket import TicketReserveRequest, TicketResponse, QRVerifyRequest
+from app.schemas.ticket import TicketReserveRequest, TicketResponse, QRVerifyRequest, TicketVerifyResponse
 
 router = APIRouter()
 
@@ -216,7 +216,7 @@ def read_my_tickets(
     return db.query(Ticket).filter(Ticket.user_id == current_profile.id).order_by(Ticket.created_at.desc()).all()
 
 
-@router.post("/verify-qr", response_model=TicketResponse)
+@router.post("/verify-qr", response_model=TicketVerifyResponse)
 def verify_ticket_qr(
     request: QRVerifyRequest,
     db: Session = Depends(deps.get_db),
@@ -242,7 +242,19 @@ def verify_ticket_qr(
             detail=f"Vé không ở trạng thái hợp lệ để điểm danh ({ticket.status.value}).",
         )
 
+    student = ticket.user
+    route = ticket.route
+
+    student_name = student.full_name if student else "Hành khách"
+    student_code = student.phone if student and student.phone else "B2012345"
+    route_name = f"Tuyến CT-{str(route.id)[:5].upper()}" if route else "Lượt chưa phân tuyến"
+
     ticket.status = TicketStatus.USED
     db.commit()
     db.refresh(ticket)
-    return ticket
+
+    res = TicketVerifyResponse.model_validate(ticket)
+    res.student_name = student_name
+    res.student_code = student_code
+    res.route_name = route_name
+    return res

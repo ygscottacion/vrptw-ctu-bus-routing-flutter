@@ -20,7 +20,15 @@ class _DriverMapTabState extends State<DriverMapTab>
   List<_Stop> _stops = [];
   bool _loading = true, _busy = false;
   String? _error;
-  int get _id => int.tryParse(_route?['id']?.toString() ?? '') ?? 0;
+  String? get _id => _route?['id']?.toString();
+  String get _routeCode {
+    final routeId = _id;
+    if (routeId == null || routeId.isEmpty) return '—';
+    if (routeId.length > 5) {
+      return 'CT-${routeId.substring(0, 5).toUpperCase()}';
+    }
+    return 'CT-$routeId';
+  }
   String get _status => _route?['status']?.toString() ?? 'pending';
   LatLng get _center =>
       _stops.isEmpty ? const LatLng(10.0302, 105.7721) : _stops.first.point;
@@ -41,7 +49,8 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _load() async {
-    if (_id == 0) {
+    final routeId = _id;
+    if (routeId == null || routeId.isEmpty) {
       setState(() {
         _loading = false;
         _error = 'Chưa có tuyến được phân công.';
@@ -49,7 +58,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       return;
     }
     try {
-      final route = await widget.api.fetchRouteDetails(_id);
+      final route = await widget.api.fetchRouteDetails(routeId);
       final stops = (route['stops'] as List<dynamic>? ?? []).map((raw) {
         final item = Map<String, dynamic>.from(raw as Map);
         final loc = Map<String, dynamic>.from(item['location'] as Map? ?? {});
@@ -128,13 +137,14 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _toggle() async {
-    if (_id == 0 || _status == 'completed') return;
+    final routeId = _id;
+    if (routeId == null || routeId.isEmpty || _status == 'completed') return;
     setState(() => _busy = true);
     final wasInProgress = _status == 'in_progress';
     try {
       final updatedRoute = wasInProgress
-          ? await widget.api.endRoute(_id)
-          : await widget.api.startRoute(_id);
+          ? await widget.api.endRoute(routeId)
+          : await widget.api.startRoute(routeId);
       if (mounted) {
         setState(() {
           _route = updatedRoute;
@@ -254,7 +264,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                         decoration: BoxDecoration(
                             color: const Color(0xFFE7F5EF),
                             borderRadius: BorderRadius.circular(5)),
-                        child: Text('CT-${_id.toString().padLeft(2, '0')}',
+                        child: Text(_routeCode,
                             style: const TextStyle(
                                 color: Color(0xFF07835A),
                                 fontWeight: FontWeight.w800,
@@ -333,7 +343,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(24, 15, 16, 24),
           children: [
-            Text('Tuyến CT-${_id.toString().padLeft(2, '0')}',
+            Text('Tuyến $_routeCode',
                 style: const TextStyle(
                     color: Color(0xFFFF4D32),
                     fontSize: 16,
@@ -394,7 +404,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           controller: scroll,
           padding: const EdgeInsets.all(20),
           children: [
-            _line('Tuyến số', 'CT-${_id.toString().padLeft(2, '0')}'),
+            _line('Tuyến số', _routeCode),
             _line('Tên tuyến', _title),
             _line(
                 'Giờ hoạt động',

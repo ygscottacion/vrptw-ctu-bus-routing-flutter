@@ -41,3 +41,9 @@ class TicketResponse(BaseModel):
 
 class QRVerifyRequest(BaseModel):
     qr_code: str
+
+
+class TicketVerifyResponse(TicketResponse):
+    student_name: Optional[str] = None
+    student_code: Optional[str] = None
+    route_name: Optional[str] = None

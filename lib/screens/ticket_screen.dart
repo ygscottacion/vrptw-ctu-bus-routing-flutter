@@ -308,7 +308,19 @@ class _TicketScreenState extends State<TicketScreen>
                     borderRadius: BorderRadius.circular(AppRadius.full),
                   ),
                   child: Text(
+<<<<<<< HEAD
+                    t.status == 'assigned' 
+                        ? 'Sẵn sàng' 
+                        : t.status == 'reserved' 
+                            ? 'Chờ xếp xe' 
+                            : t.status == 'used' 
+                                ? 'Đã đi' 
+                                : t.status == 'cancelled' 
+                                    ? 'Đã hủy' 
+                                    : 'Hết hạn',
+=======
                     t.statusLabel,
+>>>>>>> main
                     style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -319,6 +331,9 @@ class _TicketScreenState extends State<TicketScreen>
             ),
           ),
 
+<<<<<<< HEAD
+          // Khu vực trung tâm: Hiển thị tuỳ theo trạng thái vé
+=======
           if (t.status == 'reserved') ...[
             const SizedBox(height: AppSpacing.xl),
             Icon(Icons.hourglass_top_rounded,
@@ -340,6 +355,7 @@ class _TicketScreenState extends State<TicketScreen>
           ],
 
           // QR - chi hien khi da assigned (co tuyen that).
+>>>>>>> main
           if (t.status == 'assigned') ...[
             const SizedBox(height: AppSpacing.xl),
             Container(
@@ -351,10 +367,18 @@ class _TicketScreenState extends State<TicketScreen>
                     color: AppColors.teal.withValues(alpha: 0.2), width: 2),
               ),
               child: QrImageView(
+<<<<<<< HEAD
+                data: t.qrData,
+                version: QrVersions.auto,
+                size: 200,
+                backgroundColor: Colors.white,
+              ),
+=======
                   data: t.qrData,
                   version: QrVersions.auto,
                   size: 200,
                   backgroundColor: Colors.white),
+>>>>>>> main
             ),
             const SizedBox(height: AppSpacing.md),
             const Text(
@@ -363,6 +387,68 @@ class _TicketScreenState extends State<TicketScreen>
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                   color: AppColors.teal),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            const Divider(height: 1, color: AppColors.border),
+          ] else if (t.status == 'reserved') ...[
+            const SizedBox(height: AppSpacing.xl),
+            Container(
+              padding: const EdgeInsets.all(20),
+              margin: const EdgeInsets.symmetric(horizontal: 24),
+              decoration: BoxDecoration(
+                color: AppColors.orange.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppColors.orange.withOpacity(0.2),
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.hourglass_empty_rounded,
+                    color: AppColors.orange,
+                    size: 48,
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Đang tính toán tối ưu lộ trình',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Hệ thống sẽ tự động gán xe và giờ đón chi tiết sau mốc 22:00 của ngày trước ngày chạy.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade700,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            const Divider(height: 1, color: AppColors.border),
+          ] else if (t.status == 'used') ...[
+            const SizedBox(height: AppSpacing.xl),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Colors.green,
+              size: 54,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Đã điểm danh lên xe',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
             const Divider(height: 1, color: AppColors.border),
@@ -853,7 +939,11 @@ class _TicketScreenState extends State<TicketScreen>
     Map<String, dynamic> ticket;
     try {
       ticket = await widget.api.bookTicket(
+<<<<<<< HEAD
+        pickupLocationId: _selectedRoute!,
+=======
         pickupLocationId: _selectedRoute!, // UUID string, khong parse int nua
+>>>>>>> main
         serviceDate: _serviceDate,
         sessionId: _sessionId,
         tripType: _tripType,
