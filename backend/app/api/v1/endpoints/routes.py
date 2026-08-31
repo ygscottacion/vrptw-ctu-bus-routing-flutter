@@ -119,13 +119,19 @@ def generate_routes(
     db.commit()
     db.refresh(new_job)
 
-    # Run worker process for the job
+# Run worker process for the job
     try:
         updated_job = run_route_job_worker(db=db, job_id=new_job.id)
-        return updated_job
+        return {
+            "job_id": updated_job.id,
+            "status": updated_job.status
+        }
     except Exception as e:
         db.refresh(new_job)
-        return new_job
+        return {
+            "job_id": new_job.id,
+            "status": new_job.status
+        }
 
 
 @router.get("", response_model=List[RouteResponse])
