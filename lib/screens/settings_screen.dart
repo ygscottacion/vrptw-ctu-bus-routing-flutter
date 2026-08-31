@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:overlay_support/overlay_support.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
-import '../services/api_service.dart';
+import '../state/app_state.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.apiService, required this.onLoggedIn});
-  final ApiService apiService;
-  final ValueChanged<Map<String, dynamic>> onLoggedIn;
+  const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -16,20 +15,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _tripReminder = true;
   bool _promoNotif = true;
   bool _delayAlert = true;
-
-  late final ApiService _apiService;
-  Map<String, dynamic>? _currentUser;
-  bool _isLoggingIn = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _apiService = widget.apiService;
-  }
+  bool _loggingOut = false;
 
   @override
   Widget build(BuildContext context) {
-    final isLoggedIn = _currentUser != null;
+    final appState = context.watch<AppState>();
+    final user = appState.user ?? {};
+    final role = appState.role;
 
     return Scaffold(
       appBar: AppBar(
@@ -39,15 +31,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.only(bottom: AppSpacing.xxxl),
         child: Column(
           children: [
-            _buildProfileCard(isLoggedIn),
+            _buildProfileCard(user, role),
             _buildGroup('TÀI KHOẢN', [
               _SettingItem(
                 icon: '👤',
-                label: isLoggedIn ? 'Thông tin cá nhân' : 'Đăng nhập vào hệ thống',
+                label: 'Thông tin cá nhân',
                 color: AppColors.teal,
-                onTap: isLoggedIn
-                    ? () => _toast('Đã đăng nhập tài khoản: ${_currentUser!['username']}')
-                    : () => _showLoginDialog(context),
+                onTap: () => _toast('Đăng nhập với: ${user['email'] ?? '—'}'),
               ),
               _SettingItem(
                 icon: '💳',
@@ -79,7 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ]),
             const SizedBox(height: AppSpacing.lg),
-            if (isLoggedIn) _buildLogoutBtn(context) else _buildLoginBtn(context),
+            _buildLogoutBtn(context, appState),
           ],
         ),
       ),
@@ -87,7 +77,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   // ─── PROFILE CARD ──────────────────────────────────────────
-  Widget _buildProfileCard(bool isLoggedIn) {
+  Widget _buildProfileCard(Map<String, dynamic> user, String role) {
     return Container(
       margin: const EdgeInsets.all(AppSpacing.lg),
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -108,21 +98,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: 80,
             height: 80,
             decoration: BoxDecoration(
-              color: isLoggedIn ? AppColors.tealBg : AppColors.purpleBg,
+              color: role == 'admin' ? AppColors.purpleBg : AppColors.tealBg,
               shape: BoxShape.circle,
             ),
             child: Center(
               child: Text(
-                isLoggedIn ? ( _currentUser!['role'] == 'admin' ? '👑' : '🚌') : '👤',
+                role == 'admin' ? '👑' : '🚌',
                 style: const TextStyle(fontSize: 40),
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
           Text(
-            isLoggedIn
-                ? (_currentUser!['full_name'] ?? _currentUser!['username'])
-                : 'Chưa đăng nhập',
+            user['full_name'] ?? user['email'] ?? 'Người dùng',
             style: const TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -131,19 +119,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 2),
           Text(
-            isLoggedIn
-                ? 'Vai trò: ${_currentUser!['role'].toString().toUpperCase()}'
-                : 'Nhấn Đăng nhập để sử dụng đầy đủ tính năng',
-            style: TextStyle(
+            'Vai trò: ${role.toUpperCase()}',
+            style: const TextStyle(
               fontSize: 13,
-              fontWeight: isLoggedIn ? FontWeight.w600 : FontWeight.normal,
-              color: isLoggedIn ? AppColors.teal : AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+              color: AppColors.teal,
             ),
           ),
-          if (isLoggedIn && _currentUser!['phone'] != null) ...[
+          if (user['phone'] != null) ...[
             const SizedBox(height: 2),
             Text(
-              'SĐT: ${_currentUser!['phone']}',
+              'SĐT: ${user['phone']}',
               style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
             ),
           ],
@@ -152,152 +138,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ─── LOGIN DIALOG ───────────────────────────────────────────
-  void _showLoginDialog(BuildContext context) {
-    final usernameController = TextEditingController(text: 'admin');
-    final passwordController = TextEditingController(text: 'admin123');
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.lg)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            left: AppSpacing.lg,
-            right: AppSpacing.lg,
-            top: AppSpacing.lg,
-            bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.border,
-                    borderRadius: BorderRadius.circular(AppRadius.full),
-                  ),
-                ),
-              ),
-              const Center(
-                child: Text(
-                  '🔑 Đăng nhập Hệ Thống Backend',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              const Text('Tài khoản test nhanh:'),
-              const Text('• Admin: admin / admin123\n• Driver: driver1 / driver123',
-                  style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'Tên đăng nhập (Username)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Mật khẩu (Password)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.lock),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isLoggingIn
-                      ? null
-                      : () async {
-                          setModalState(() => _isLoggingIn = true);
-                          final username = usernameController.text.trim();
-                          final password = passwordController.text.trim();
-
-                          final res = await _apiService.login(username, password);
-                          setModalState(() => _isLoggingIn = false);
-
-                          if (res['success'] == true) {
-                            Navigator.pop(ctx);
-                            final user = res['user'] as Map<String, dynamic>;
-                            setState(() => _currentUser = user);
-                            widget.onLoggedIn(user);
-                            _toast('✅ Đăng nhập thành công! Role: ${user['role'].toString().toUpperCase()}');
-                          } else {
-                            _toast('❌ ${res['message']}');
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.teal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.sm),
-                    ),
-                  ),
-                  child: _isLoggingIn
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('ĐĂNG NHẬP', style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── LOGIN BUTTON FOR UNAUTHENTICATED ─────────────────────
-  Widget _buildLoginBtn(BuildContext context) {
+  // ─── LOGOUT BUTTON ─────────────────────────────────────────
+  Widget _buildLogoutBtn(BuildContext context, AppState appState) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
       child: SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
-          onPressed: () => _showLoginDialog(context),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.teal,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppRadius.md),
-            ),
-          ),
-          icon: const Text('🔑', style: TextStyle(fontSize: 18)),
-          label: const Text(
-            'Đăng nhập tài khoản',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─── LOGOUT BUTTON FOR AUTHENTICATED ──────────────────────
-  Widget _buildLogoutBtn(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => _showLogoutConfirm(context),
+          onPressed:
+              _loggingOut ? null : () => _showLogoutConfirm(context, appState),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.red,
             foregroundColor: Colors.white,
@@ -316,7 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showLogoutConfirm(BuildContext context) {
+  void _showLogoutConfirm(BuildContext context, AppState appState) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -355,19 +204,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                   ),
-                  child: const Text('Hủy', style: TextStyle(color: AppColors.textSecondary)),
+                  child: const Text('Hủy',
+                      style: TextStyle(color: AppColors.textSecondary)),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     Navigator.pop(ctx);
-                    setState(() {
-                      _currentUser = null;
-                    });
+                    setState(() => _loggingOut = true);
+                    await appState.logout();
+                    if (!mounted) return;
+                    setState(() => _loggingOut = false);
                     _toast('👋 Đã đăng xuất khỏi tài khoản!');
                   },
                   style: ElevatedButton.styleFrom(
@@ -376,7 +228,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                   ),
                   child: const Text('Đăng xuất'),
                 ),
@@ -392,7 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildGroup(String title, List<_SettingItem> items) {
     return Container(
       margin: const EdgeInsets.fromLTRB(
-        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -432,7 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildNotifGroup() {
     return Container(
       margin: const EdgeInsets.fromLTRB(
-        AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
+          AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -479,11 +332,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                  color: item.color,
-                  borderRadius: BorderRadius.circular(10)),
+                  color: item.color, borderRadius: BorderRadius.circular(10)),
               child: Center(
-                  child: Text(item.icon,
-                      style: const TextStyle(fontSize: 15))),
+                  child: Text(item.icon, style: const TextStyle(fontSize: 15))),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
@@ -515,10 +366,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Container(
             width: 34,
             height: 34,
-            decoration:
-                BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
-            child: Center(
-                child: Text(icon, style: const TextStyle(fontSize: 15))),
+            decoration: BoxDecoration(
+                color: color, borderRadius: BorderRadius.circular(10)),
+            child:
+                Center(child: Text(icon, style: const TextStyle(fontSize: 15))),
           ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
@@ -544,8 +395,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppRadius.lg))),
+          borderRadius:
+              BorderRadius.vertical(top: Radius.circular(AppRadius.lg))),
       builder: (ctx) => Padding(
         padding: const EdgeInsets.all(AppSpacing.lg),
         child: Column(
@@ -557,8 +408,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 margin: const EdgeInsets.only(bottom: AppSpacing.lg),
                 decoration: BoxDecoration(
                     color: AppColors.border,
-                    borderRadius:
-                        BorderRadius.circular(AppRadius.full))),
+                    borderRadius: BorderRadius.circular(AppRadius.full))),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -569,8 +419,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: AppColors.teal,
                       borderRadius: BorderRadius.circular(16)),
                   child: const Center(
-                      child: Text('🚌',
-                          style: TextStyle(fontSize: 30))),
+                      child: Text('🚌', style: TextStyle(fontSize: 30))),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 const Column(
@@ -583,8 +432,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             color: AppColors.textPrimary)),
                     Text('Phiên bản 1.0.0',
                         style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textMuted)),
+                            fontSize: 13, color: AppColors.textMuted)),
                   ],
                 ),
               ],
@@ -594,9 +442,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Ứng dụng xe buýt đưa đón sinh viên Trường Đại học Cần Thơ. Cung cấp thông tin lịch trình, đặt vé và theo dõi xe buýt theo thời gian thực.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                  height: 1.5),
+                  fontSize: 13, color: AppColors.textSecondary, height: 1.5),
             ),
             const SizedBox(height: AppSpacing.lg),
             Row(
@@ -609,8 +455,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: AppSpacing.md),
             const Text('© 2026 Trường Đại học Cần Thơ',
-                style: TextStyle(
-                    fontSize: 12, color: AppColors.textMuted)),
+                style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
             const SizedBox(height: AppSpacing.lg),
             SizedBox(
               width: double.infinity,
@@ -619,10 +464,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: AppColors.border),
                   shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppRadius.sm)),
-                  padding: const EdgeInsets.symmetric(
-                      vertical: AppSpacing.md),
+                      borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
                 ),
                 child: const Text('Đóng',
                     style: TextStyle(
@@ -646,8 +489,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 fontWeight: FontWeight.w800,
                 color: AppColors.teal)),
         Text(label,
-            style: const TextStyle(
-                fontSize: 12, color: AppColors.textMuted)),
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
       ],
     );
   }
