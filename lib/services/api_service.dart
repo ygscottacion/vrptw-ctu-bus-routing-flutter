@@ -17,7 +17,6 @@ class ApiService {
       };
 
   /// Lấy hồ sơ và role thật từ backend, dùng để điều hướng sau đăng nhập.
-  /// TODO: xác nhận lại path chính xác với Nhã (ApiConfig.authMe).
   Future<Map<String, dynamic>?> fetchMe() async {
     if (_authToken == null) return null;
     try {
@@ -34,7 +33,7 @@ class ApiService {
     }
   }
 
-  /// Lấy danh sách trạm dừng
+  /// Lấy danh sách trạm dừng. location.id la UUID (String) tu Ngay 4.
   Future<List<dynamic>> fetchLocations() async {
     final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.locations}');
     try {
@@ -60,8 +59,9 @@ class ApiService {
     throw Exception('Không thể tải danh sách xe buýt: ${response.statusCode}');
   }
 
-  /// Lấy lịch trình tuyến xe của Tài Xế
-  Future<List<dynamic>> fetchDriverRoutes(int driverId) async {
+  /// Lấy lịch trình tuyến xe của Tài Xế.
+  /// driverId la UUID (String) vi trung voi profiles.id sau migration.
+  Future<List<dynamic>> fetchDriverRoutes(String driverId) async {
     final url =
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesDriver}$driverId');
     final response = await http.get(url, headers: _headers);
@@ -93,8 +93,9 @@ class ApiService {
   }
 
   /// One ticket is one reserved direction for a chosen service day and stop.
+  /// pickupLocationId la UUID (String) tu Ngay 4 - khong con la int.
   Future<Map<String, dynamic>> bookTicket({
-    required int pickupLocationId,
+    required String pickupLocationId,
     required DateTime serviceDate,
     required String sessionId,
     required String tripType,
@@ -116,7 +117,8 @@ class ApiService {
     return Map<String, dynamic>.from(data.first as Map);
   }
 
-  Future<Map<String, dynamic>> fetchRouteDetails(int routeId) async {
+  /// routeId la UUID (String).
+  Future<Map<String, dynamic>> fetchRouteDetails(String routeId) async {
     final response = await http.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routeDetails}$routeId'),
       headers: _headers,
@@ -131,7 +133,7 @@ class ApiService {
   Future<Map<String, dynamic>> reportIncident({
     required String title,
     String? description,
-    int? vehicleId,
+    String? vehicleId,
   }) =>
       _post(ApiConfig.incidents, {
         'title': title,
@@ -139,9 +141,9 @@ class ApiService {
         if (vehicleId != null) 'vehicle_id': vehicleId,
       });
 
-  Future<Map<String, dynamic>> startRoute(int routeId) =>
+  Future<Map<String, dynamic>> startRoute(String routeId) =>
       _patch('/routes/$routeId/start');
-  Future<Map<String, dynamic>> endRoute(int routeId) =>
+  Future<Map<String, dynamic>> endRoute(String routeId) =>
       _patch('/routes/$routeId/end');
 
   Future<Map<String, dynamic>> _post(
