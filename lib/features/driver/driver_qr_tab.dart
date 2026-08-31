@@ -17,6 +17,9 @@ class _DriverQrTabState extends State<DriverQrTab>
   late AnimationController _scannerAnimController;
   late Animation<double> _scannerAnimation;
   bool _isChecking = false;
+
+  // Lịch sử các vé đã soát trong phiên làm việc (Duplicate Scan Protection)
+  final Set<String> _scannedTickets = {};
   Map<String, dynamic>? _lastVerificationResult;
 
   @override
@@ -46,13 +49,28 @@ class _DriverQrTabState extends State<DriverQrTab>
     final cleanCode = code.trim();
     if (cleanCode.isEmpty) return;
 
+    // 1. Kiểm tra Quét trùng (Duplicate Scan Protection)
+    if (_scannedTickets.contains(cleanCode)) {
+      setState(() {
+        _lastVerificationResult = {
+          'status': 'duplicate',
+          'code': cleanCode,
+          'message': 'Mã vé này đã được tài xế soát thành công trước đó trong ca làm việc!',
+          'timestamp': DateTime.now().toString().substring(11, 16),
+        };
+      });
+      _showResultDialog('duplicate');
+      return;
+    }
+
     setState(() => _isChecking = true);
     try {
       final res = await widget.api.verifyTicket(cleanCode);
       if (mounted) {
+        _scannedTickets.add(cleanCode); // Đánh dấu mã vé đã soát
         setState(() {
           _lastVerificationResult = {
-            'success': true,
+            'status': 'success',
             'ticket_id': res['id'] ?? cleanCode,
             'student_name': res['student_name'] ?? 'Nguyễn Văn Sinh Viên',
             'student_code': res['student_code'] ?? 'B2012345',
@@ -60,27 +78,49 @@ class _DriverQrTabState extends State<DriverQrTab>
             'timestamp': DateTime.now().toString().substring(11, 16),
           };
         });
-        _showResultDialog(true);
+        _showResultDialog('success');
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _lastVerificationResult = {
-            'success': false,
+            'status': 'invalid',
             'error': e.toString(),
             'code': cleanCode,
           };
         });
-        _showResultDialog(false);
+        _showResultDialog('invalid');
       }
     } finally {
       if (mounted) setState(() => _isChecking = false);
     }
   }
 
-  void _showResultDialog(bool isSuccess) {
+  void _showResultDialog(String status) {
+    final isSuccess = status == 'success';
+    final isDuplicate = status == 'duplicate';
+
+    Color themeColor;
+    IconData iconData;
+    String title;
+
+    if (isSuccess) {
+      themeColor = AppColors.teal;
+      iconData = Icons.check_circle_rounded;
+      title = 'XÁC NHẬN VÉ HỢP LỆ';
+    } else if (isDuplicate) {
+      themeColor = const Color(0xFFF59F00); // Orange warning
+      iconData = Icons.warning_amber_rounded;
+      title = 'CẢNH BÁO: VÉ ĐÃ SỬ DỤNG';
+    } else {
+      themeColor = Colors.red;
+      iconData = Icons.cancel_rounded;
+      title = 'VÉ KHÔNG HỢP LỆ';
+    }
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -94,23 +134,22 @@ class _DriverQrTabState extends State<DriverQrTab>
               height: 70,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isSuccess
-                    ? AppColors.teal.withOpacity(0.15)
-                    : Colors.red.withOpacity(0.15),
+                color: themeColor.withOpacity(0.15),
               ),
               child: Icon(
-                isSuccess ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                color: isSuccess ? AppColors.teal : Colors.red,
+                iconData,
+                color: themeColor,
                 size: 48,
               ),
             ),
             const SizedBox(height: 16),
             Text(
-              isSuccess ? 'XÁC NHẬN VÉ HỢP LỆ' : 'VÉ KHÔNG HỢP LỆ',
+              title,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: isSuccess ? AppColors.teal : Colors.red,
+                color: themeColor,
               ),
             ),
             const SizedBox(height: 12),
@@ -134,11 +173,45 @@ class _DriverQrTabState extends State<DriverQrTab>
                   ],
                 ),
               ),
+            ] else if (isDuplicate) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF9DB),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFEC99)),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      _lastVerificationResult?['message'] ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFFE67700),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _infoRow('Mã vé:', _lastVerificationResult?['code'] ?? ''),
+                    const SizedBox(height: 4),
+                    _infoRow('Thời gian quét lại:',
+                        _lastVerificationResult?['timestamp'] ?? ''),
+                  ],
+                ),
+              ),
             ] else ...[
-              Text(
-                'Mã QR "${_lastVerificationResult?['code'] ?? ''}" không tồn tại hoặc đã hết hạn sử dụng.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black87),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0F0),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Mã QR "${_lastVerificationResult?['code'] ?? ''}" không tồn tại, hết hạn hoặc không thuộc quyền sở hữu.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                ),
               ),
             ],
             const SizedBox(height: 20),
@@ -150,13 +223,13 @@ class _DriverQrTabState extends State<DriverQrTab>
                   _codeController.clear();
                 },
                 style: FilledButton.styleFrom(
-                  backgroundColor: isSuccess ? AppColors.teal : Colors.grey[800],
+                  backgroundColor: themeColor,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text('Quét vé tiếp theo'),
+                child: const Text('Quét vé tiếp theo', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -309,15 +382,33 @@ class _DriverQrTabState extends State<DriverQrTab>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Nhập / Giả lập mã QR vé:',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Nhập / Giả lập mã QR vé:',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (_scannedTickets.isNotEmpty)
+                        TextButton(
+                          onPressed: () {
+                            setState(() => _scannedTickets.clear());
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Đã xóa lịch sử vé quét trùng.'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
+                          child: const Text('Xóa bộ nhớ quét', style: TextStyle(color: AppColors.teal, fontSize: 11)),
+                        ),
+                    ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
@@ -325,8 +416,8 @@ class _DriverQrTabState extends State<DriverQrTab>
                           controller: _codeController,
                           style: const TextStyle(color: Colors.white),
                           decoration: InputDecoration(
-                            hintText: 'VD: TICKET-101',
-                            hintStyle: const TextStyle(color: Colors.white38),
+                            hintText: 'VD: 550e8400-e29b-41d4-a716-446655440000',
+                            hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
                             filled: true,
                             fillColor: Colors.black26,
                             contentPadding: const EdgeInsets.symmetric(
@@ -358,29 +449,42 @@ class _DriverQrTabState extends State<DriverQrTab>
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    'Mẫu quét thử nghiệm nhanh:',
+                    'Mẫu vé Supabase UUID & Quét thử nghiệm:',
                     style: TextStyle(color: Colors.white54, fontSize: 11),
                   ),
                   const SizedBox(height: 6),
                   Wrap(
                     spacing: 8,
+                    runSpacing: 8,
                     children: [
                       ActionChip(
-                        label: const Text('Mẫu vé #1'),
+                        label: const Text('Vé UUID #1'),
                         backgroundColor: Colors.white10,
-                        labelStyle: const TextStyle(color: Colors.white),
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
                         onPressed: () {
-                          _codeController.text = 'TICKET-TEST-001';
-                          _verifyQr('TICKET-TEST-001');
+                          const uuid = '550e8400-e29b-41d4-a716-446655440000';
+                          _codeController.text = uuid;
+                          _verifyQr(uuid);
                         },
                       ),
                       ActionChip(
-                        label: const Text('Mẫu vé #2'),
+                        label: const Text('Vé UUID #2'),
                         backgroundColor: Colors.white10,
-                        labelStyle: const TextStyle(color: Colors.white),
+                        labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
                         onPressed: () {
-                          _codeController.text = 'TICKET-TEST-002';
-                          _verifyQr('TICKET-TEST-002');
+                          const uuid = '8d2f3a4b-9999-4321-8888-abcdef123456';
+                          _codeController.text = uuid;
+                          _verifyQr(uuid);
+                        },
+                      ),
+                      ActionChip(
+                        label: const Text('Vé hỏng/Lỗi'),
+                        backgroundColor: Colors.red.withOpacity(0.2),
+                        labelStyle: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                        onPressed: () {
+                          const invalidCode = 'INVALID-EXPIRED-999';
+                          _codeController.text = invalidCode;
+                          _verifyQr(invalidCode);
                         },
                       ),
                     ],

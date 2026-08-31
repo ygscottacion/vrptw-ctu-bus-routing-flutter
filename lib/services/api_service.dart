@@ -101,8 +101,8 @@ class ApiService {
     }
   }
 
-  /// 4. Lấy lịch trình tuyến xe của Tài Xế
-  Future<List<dynamic>> fetchDriverRoutes(int driverId) async {
+  /// 4. Lấy lịch trình tuyến xe của Tài Xế (Hỗ trợ cả Int ID & Supabase UUID)
+  Future<List<dynamic>> fetchDriverRoutes(dynamic driverId) async {
     final url =
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesDriver}$driverId');
     final headers = <String, String>{
@@ -174,7 +174,7 @@ class ApiService {
     return Map<String, dynamic>.from(data.first as Map);
   }
 
-  Future<Map<String, dynamic>> fetchRouteDetails(int routeId) async {
+  Future<Map<String, dynamic>> fetchRouteDetails(dynamic routeId) async {
     final response = await http.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routeDetails}$routeId'),
       headers: _headers,
@@ -194,9 +194,9 @@ class ApiService {
         if (vehicleId != null) 'vehicle_id': vehicleId
       });
 
-  Future<Map<String, dynamic>> startRoute(int routeId) =>
+  Future<Map<String, dynamic>> startRoute(dynamic routeId) =>
       _patch('/routes/$routeId/start');
-  Future<Map<String, dynamic>> endRoute(int routeId) =>
+  Future<Map<String, dynamic>> endRoute(dynamic routeId) =>
       _patch('/routes/$routeId/end');
 
   Future<Map<String, dynamic>> _post(

@@ -15,17 +15,17 @@
 
 | ID | Tính năng | Các bước thực hiện (Steps) | Dữ liệu Test (Input) | Kết quả mong đợi (Expected) | Trạng thái | Nơi lưu Evidence |
 |---|---|---|---|---|---|---|
-| TC_DRV_01 | Giao diện trống khi chưa có tuyến | 1. Đăng nhập tài khoản chưa được gán tuyến<br>2. Kiểm tra Home | Tài khoản driver chưa có job | Card "Up Next" hiển thị trạng thái "Chưa có tuyến tiếp theo". | [ ] | |
-| TC_DRV_02 | Hiển thị tuyến được phân công | 1. Đăng nhập tài khoản có tuyến<br>2. Xem thông tin tuyến tại Home | driver1 có chuyến mã CT-01 | Hiển thị thông tin tuyến (tổng trạm, dự kiến khách). | [ ] | |
-| TC_DRV_03 | Bắt đầu và Kết thúc chuyến | 1. Bấm "Bắt đầu chuyến" trên bản đồ tuyến<br>2. Chờ API xử lý<br>3. Bấm "Kết thúc chuyến" | CT-01 (pending -> in_progress -> completed) | Trạng thái chuyến thay đổi thành "Đang chạy" rồi thành "Hoàn tất". | [ ] | |
+| TC_DRV_01 | Giao diện trống khi chưa có tuyến | 1. Đăng nhập tài khoản chưa được gán tuyến<br>2. Kiểm tra Home | Tài khoản driver chưa có job | Card "Up Next" hiển thị trạng thái "Chưa có tuyến tiếp theo". | [x] | |
+| TC_DRV_02 | Hiển thị tuyến được phân công | 1. Đăng nhập tài khoản có tuyến<br>2. Xem thông tin tuyến tại Home | driver1 có chuyến mã CT-01 | Hiển thị thông tin tuyến (tổng trạm, dự kiến khách). | [x] | |
+| TC_DRV_03 | Bắt đầu và Kết thúc chuyến | 1. Bấm "Bắt đầu chuyến" trên bản đồ tuyến<br>2. Chờ API xử lý<br>3. Bấm "Kết thúc chuyến" | CT-01 (pending -> in_progress -> completed) | Trạng thái chuyến thay đổi thành "Đang chạy" rồi thành "Hoàn tất". | [x] | |
 
 ## 3. Flow Quét QR vé Sinh viên
 
 | ID | Tính năng | Các bước thực hiện (Steps) | Dữ liệu Test (Input) | Kết quả mong đợi (Expected) | Trạng thái | Nơi lưu Evidence |
 |---|---|---|---|---|---|---|
-| TC_QR_01 | Quét vé hợp lệ | 1. Mở Tab QR<br>2. Đưa Camera quét mã sinh viên đã mua | QR string hợp lệ: UUID ticket thực | Popup báo "XÁC NHẬN VÉ HỢP LỆ", hiển thị tên, MSV. | [ ] | |
-| TC_QR_02 | Quét vé không hợp lệ / Hết hạn | 1. Quét vé chưa tới giờ hoặc đã hủy | QR string cũ hoặc random | Popup báo "VÉ KHÔNG HỢP LỆ" màu đỏ. | [ ] | |
-| TC_QR_03 | Chống quét lặp (Duplicate scan) | 1. Quét lại vé vừa quét ở TC_QR_01 | Cùng mã QR của TC_QR_01 | Lần 2 báo lỗi vé đã được sử dụng. | [ ] | |
+| TC_QR_01 | Quét vé hợp lệ | 1. Mở Tab QR<br>2. Đưa Camera quét mã sinh viên đã mua | QR string hợp lệ: UUID ticket thực | Popup báo "XÁC NHẬN VÉ HỢP LỆ", hiển thị tên, MSV. | [x] | |
+| TC_QR_02 | Quét vé không hợp lệ / Hết hạn | 1. Quét vé chưa tới giờ hoặc đã hủy | QR string cũ hoặc random | Popup báo "VÉ KHÔNG HỢP LỆ" màu đỏ. | [x] | |
+| TC_QR_03 | Chống quét lặp (Duplicate scan) | 1. Quét lại vé vừa quét ở TC_QR_01 | Cùng mã QR của TC_QR_01 | Lần 2 báo lỗi vé đã được sử dụng. | [x] | |
 
 ## 4. Flow GPS Tracking & Phân quyền RLS
 

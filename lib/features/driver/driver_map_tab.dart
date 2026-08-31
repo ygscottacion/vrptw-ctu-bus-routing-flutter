@@ -20,7 +20,15 @@ class _DriverMapTabState extends State<DriverMapTab>
   List<_Stop> _stops = [];
   bool _loading = true, _busy = false;
   String? _error;
-  int get _id => int.tryParse(_route?['id']?.toString() ?? '') ?? 0;
+  dynamic get _rawId => _route?['id'];
+  bool get _hasValidId =>
+      _rawId != null && _rawId.toString().isNotEmpty && _rawId.toString() != '0';
+  String get _idDisplay {
+    final str = _rawId?.toString() ?? '';
+    if (str.isEmpty) return '00';
+    if (str.length > 8) return str.substring(0, 8);
+    return str.padLeft(2, '0');
+  }
   String get _status => _route?['status']?.toString() ?? 'pending';
   LatLng get _center =>
       _stops.isEmpty ? const LatLng(10.0302, 105.7721) : _stops.first.point;
@@ -41,7 +49,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _load() async {
-    if (_id == 0) {
+    if (!_hasValidId) {
       setState(() {
         _loading = false;
         _error = 'Chưa có tuyến được phân công.';
@@ -49,7 +57,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       return;
     }
     try {
-      final route = await widget.api.fetchRouteDetails(_id);
+      final route = await widget.api.fetchRouteDetails(_rawId);
       final stops = (route['stops'] as List<dynamic>? ?? []).map((raw) {
         final item = Map<String, dynamic>.from(raw as Map);
         final loc = Map<String, dynamic>.from(item['location'] as Map? ?? {});
@@ -80,7 +88,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _confirmToggle() async {
-    if (_id == 0 || _status == 'completed' || _busy) return;
+    if (!_hasValidId || _status == 'completed' || _busy) return;
     final isStarting = _status != 'in_progress';
     final actionText = isStarting ? 'bắt đầu' : 'kết thúc';
     final confirm = await showDialog<bool>(
@@ -99,8 +107,8 @@ class _DriverMapTabState extends State<DriverMapTab>
         ),
         content: Text(
           isStarting
-              ? 'Bạn có chắc chắn muốn BẮT ĐẦU chuyến xe CT-${_id.toString().padLeft(2, '0')} không?'
-              : 'Bạn có chắc chắn muốn KẾT THÚC chuyến xe CT-${_id.toString().padLeft(2, '0')} không?',
+              ? 'Bạn có chắc chắn muốn BẮT ĐẦU chuyến xe CT-$_idDisplay không?'
+              : 'Bạn có chắc chắn muốn KẾT THÚC chuyến xe CT-$_idDisplay không?',
         ),
         actions: [
           TextButton(
@@ -128,13 +136,13 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   Future<void> _toggle() async {
-    if (_id == 0 || _status == 'completed') return;
+    if (!_hasValidId || _status == 'completed') return;
     setState(() => _busy = true);
     final wasInProgress = _status == 'in_progress';
     try {
       final updatedRoute = wasInProgress
-          ? await widget.api.endRoute(_id)
-          : await widget.api.startRoute(_id);
+          ? await widget.api.endRoute(_rawId)
+          : await widget.api.startRoute(_rawId);
       if (mounted) {
         setState(() {
           _route = updatedRoute;
@@ -143,8 +151,8 @@ class _DriverMapTabState extends State<DriverMapTab>
           SnackBar(
             content: Text(
               wasInProgress
-                  ? 'Đã kết thúc chuyến xe CT-${_id.toString().padLeft(2, '0')}.'
-                  : 'Đã bắt đầu chuyến xe CT-${_id.toString().padLeft(2, '0')}. Chúc bạn lái xe an toàn!',
+                  ? 'Đã kết thúc chuyến xe CT-$_idDisplay.'
+                  : 'Đã bắt đầu chuyến xe CT-$_idDisplay. Chúc bạn lái xe an toàn!',
             ),
             backgroundColor: wasInProgress ? const Color(0xFFD94E41) : AppColors.teal,
             behavior: SnackBarBehavior.floating,
@@ -254,7 +262,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                         decoration: BoxDecoration(
                             color: const Color(0xFFE7F5EF),
                             borderRadius: BorderRadius.circular(5)),
-                        child: Text('CT-${_id.toString().padLeft(2, '0')}',
+                        child: Text('CT-$_idDisplay',
                             style: const TextStyle(
                                 color: Color(0xFF07835A),
                                 fontWeight: FontWeight.w800,
@@ -333,7 +341,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(24, 15, 16, 24),
           children: [
-            Text('Tuyến CT-${_id.toString().padLeft(2, '0')}',
+            Text('Tuyến CT-$_idDisplay',
                 style: const TextStyle(
                     color: Color(0xFFFF4D32),
                     fontSize: 16,
@@ -394,7 +402,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           controller: scroll,
           padding: const EdgeInsets.all(20),
           children: [
-            _line('Tuyến số', 'CT-${_id.toString().padLeft(2, '0')}'),
+            _line('Tuyến số', 'CT-$_idDisplay'),
             _line('Tên tuyến', _title),
             _line(
                 'Giờ hoạt động',
