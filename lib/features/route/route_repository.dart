@@ -7,6 +7,8 @@ class RouteRepository {
 
   Future<List<dynamic>> fetchLocations() => _api.fetchLocations();
   Future<List<dynamic>> fetchActiveRoutes() => _api.fetchActiveRoutes();
+
+  /// routeId la UUID (String) tu Ngay 4 - khong con la int.
   Future<Map<String, dynamic>> fetchRouteDetails(String routeId) =>
       _api.fetchRouteDetails(routeId);
 

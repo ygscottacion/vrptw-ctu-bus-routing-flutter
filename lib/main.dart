@@ -1,33 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:overlay_support/overlay_support.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'config/api_config.dart';
+import 'features/auth/auth_repository.dart';
 import 'screens/driver_shell.dart';
 import 'screens/home_screen.dart';
-import 'screens/map_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/ticket_screen.dart';
 import 'screens/notification_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/api_service.dart';
+import 'state/app_state.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(statusBarColor: AppColors.teal, statusBarIconBrightness: Brightness.light),
+  ApiConfig.assertConfigured();
+
+  await Supabase.initialize(
+    url: ApiConfig.supabaseUrl,
+    anonKey: ApiConfig.supabaseAnonKey,
   );
-  runApp(const MyCtuBusApp());
+
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+        statusBarColor: AppColors.teal,
+        statusBarIconBrightness: Brightness.light),
+  );
+
+  final authRepo = AuthRepository();
+  final appState = AppState(authRepo);
+  await appState.restoreSession();
+
+  runApp(
+    ChangeNotifierProvider.value(
+      value: appState,
+      child: const MyCtuBusApp(),
+    ),
+  );
 }
 
-class MyCtuBusApp extends StatefulWidget {
+class MyCtuBusApp extends StatelessWidget {
   const MyCtuBusApp({super.key});
-
-  @override
-  State<MyCtuBusApp> createState() => _MyCtuBusAppState();
-}
-
-class _MyCtuBusAppState extends State<MyCtuBusApp> {
-  final _api = ApiService();
-  Map<String, dynamic>? _user;
 
   @override
   Widget build(BuildContext context) => OverlaySupport.global(
@@ -35,23 +51,43 @@ class _MyCtuBusAppState extends State<MyCtuBusApp> {
           title: 'MyCTU BUS',
           debugShowCheckedModeBanner: false,
           theme: buildAppTheme(),
-          home: _home(),
+          home: const _RootScreen(),
         ),
       );
+}
 
-  Widget _home() {
-    if (_user?['role'] == 'driver') return DriverShell(user: _user!, api: _api, onLogout: _logout);
-    if (_user?['role'] == 'admin') return AdminWebNotice(onLogout: _logout);
-    return StudentShell(api: _api, onLoggedIn: (user) => setState(() => _user = user));
+class _RootScreen extends StatelessWidget {
+  const _RootScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<AppState>();
+
+    if (appState.isCheckingSession) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (!appState.isLoggedIn) {
+      return const LoginScreen(); // <- bo tham so authRepo/onLoggedIn
+    }
+
+    final api = appState
+        .api; // <- dung lai instance co san trong AppState, khong tao moi
+
+    if (appState.role == 'driver') {
+      return DriverShell(
+          user: appState.user!, api: api, onLogout: appState.logout);
+    }
+    if (appState.role == 'admin') {
+      return AdminWebNotice(onLogout: appState.logout);
+    }
+    return StudentShell(api: api);
   }
-
-  void _logout() => setState(() => _user = null);
 }
 
 class StudentShell extends StatefulWidget {
-  const StudentShell({super.key, required this.api, required this.onLoggedIn});
+  const StudentShell({super.key, required this.api});
   final ApiService api;
-  final ValueChanged<Map<String, dynamic>> onLoggedIn;
 
   @override
   State<StudentShell> createState() => _StudentShellState();
@@ -66,7 +102,7 @@ class _StudentShellState extends State<StudentShell> {
       const HomeScreen(),
       TicketScreen(api: widget.api),
       const NotificationScreen(),
-      SettingsScreen(apiService: widget.api, onLoggedIn: widget.onLoggedIn),
+      const SettingsScreen(),
     ];
 
     return Scaffold(
@@ -75,10 +111,14 @@ class _StudentShellState extends State<StudentShell> {
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Trang chủ'),
-          NavigationDestination(icon: Icon(Icons.confirmation_num_rounded), label: 'Vé của tôi'),
-          NavigationDestination(icon: Icon(Icons.notifications_rounded), label: 'Thông báo'),
-          NavigationDestination(icon: Icon(Icons.settings_rounded), label: 'Cài đặt'),
+          NavigationDestination(
+              icon: Icon(Icons.home_rounded), label: 'Trang chủ'),
+          NavigationDestination(
+              icon: Icon(Icons.confirmation_num_rounded), label: 'Vé của tôi'),
+          NavigationDestination(
+              icon: Icon(Icons.notifications_rounded), label: 'Thông báo'),
+          NavigationDestination(
+              icon: Icon(Icons.settings_rounded), label: 'Cài đặt'),
         ],
       ),
     );
@@ -97,11 +137,16 @@ class AdminWebNotice extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.admin_panel_settings_rounded, size: 70, color: AppColors.teal),
+                const Icon(Icons.admin_panel_settings_rounded,
+                    size: 70, color: AppColors.teal),
                 const SizedBox(height: 20),
-                const Text('Tài khoản quản trị', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const Text('Tài khoản quản trị',
+                    style:
+                        TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
-                const Text('Vui lòng sử dụng MyCTU BUS Admin Web để quản lý xe, tuyến và người dùng.', textAlign: TextAlign.center),
+                const Text(
+                    'Vui lòng sử dụng MyCTU BUS Admin Web để quản lý xe, tuyến và người dùng.',
+                    textAlign: TextAlign.center),
                 const SizedBox(height: 24),
                 OutlinedButton.icon(
                   onPressed: onLogout,

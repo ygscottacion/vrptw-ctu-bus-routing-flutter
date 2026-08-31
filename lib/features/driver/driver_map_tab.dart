@@ -88,19 +88,89 @@ class _DriverMapTabState extends State<DriverMapTab>
     }
   }
 
+  Future<void> _confirmToggle() async {
+    if (_id == 0 || _status == 'completed' || _busy) return;
+    final isStarting = _status != 'in_progress';
+    final actionText = isStarting ? 'bắt đầu' : 'kết thúc';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(
+              isStarting ? Icons.play_circle_fill_rounded : Icons.stop_circle_rounded,
+              color: isStarting ? AppColors.teal : const Color(0xFFD94E41),
+            ),
+            const SizedBox(width: 8),
+            Text('Xác nhận $actionText chuyến?'),
+          ],
+        ),
+        content: Text(
+          isStarting
+              ? 'Bạn có chắc chắn muốn BẮT ĐẦU chuyến xe CT-${_id.toString().padLeft(2, '0')} không?'
+              : 'Bạn có chắc chắn muốn KẾT THÚC chuyến xe CT-${_id.toString().padLeft(2, '0')} không?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isStarting ? AppColors.teal : const Color(0xFFD94E41),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              isStarting ? 'Bắt đầu ngay' : 'Xác nhận kết thúc',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _toggle();
+    }
+  }
+
   Future<void> _toggle() async {
     final routeId = _id;
     if (routeId == null || routeId.isEmpty || _status == 'completed') return;
     setState(() => _busy = true);
+    final wasInProgress = _status == 'in_progress';
     try {
-      final route = _status == 'in_progress'
+      final updatedRoute = wasInProgress
           ? await widget.api.endRoute(routeId)
           : await widget.api.startRoute(routeId);
-      if (mounted) setState(() => _route = route);
+      if (mounted) {
+        setState(() {
+          _route = updatedRoute;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              wasInProgress
+                  ? 'Đã kết thúc chuyến xe CT-${_id.toString().padLeft(2, '0')}.'
+                  : 'Đã bắt đầu chuyến xe CT-${_id.toString().padLeft(2, '0')}. Chúc bạn lái xe an toàn!',
+            ),
+            backgroundColor: wasInProgress ? const Color(0xFFD94E41) : AppColors.teal,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Chuyển trạng thái thất bại: $e'),
+            backgroundColor: Colors.red[700],
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -225,21 +295,50 @@ class _DriverMapTabState extends State<DriverMapTab>
               ])),
             ]),
           ));
-  Widget _chip() => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+  Widget _chip() {
+    Color bg;
+    Color fg;
+    String label;
+    if (_status == 'in_progress') {
+      bg = const Color(0xFFE7F5EF);
+      fg = const Color(0xFF07835A);
+      label = 'Đang chạy';
+    } else if (_status == 'completed') {
+      bg = const Color(0xFFF1F3F5);
+      fg = const Color(0xFF495057);
+      label = 'Hoàn tất';
+    } else {
+      bg = const Color(0xFFFFF3BF);
+      fg = const Color(0xFFF59F00);
+      label = 'Sắp chạy';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-          color: const Color(0xFFE7F5EF),
-          borderRadius: BorderRadius.circular(14)),
-      child: Text(
-          _status == 'in_progress'
-              ? 'Đang chạy'
-              : _status == 'completed'
-                  ? 'Hoàn tất'
-                  : 'Sắp chạy',
-          style: const TextStyle(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: fg, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
               fontSize: 11,
-              color: Color(0xFF07835A),
-              fontWeight: FontWeight.w700)));
+              color: fg,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   Widget _stopsView(ScrollController scroll) => ListView(
           controller: scroll,
           padding: const EdgeInsets.fromLTRB(24, 15, 16, 24),
@@ -330,17 +429,52 @@ class _DriverMapTabState extends State<DriverMapTab>
             TextSpan(
                 text: value, style: const TextStyle(color: Color(0xFF75828B)))
           ])));
-  Widget _button() => FilledButton.icon(
-      onPressed: _busy || _status == 'completed' ? null : _toggle,
-      style: FilledButton.styleFrom(
-          backgroundColor: _status == 'in_progress'
-              ? const Color(0xFFD94E41)
-              : AppColors.teal),
-      icon: Icon(_status == 'in_progress'
-          ? Icons.stop_rounded
-          : Icons.play_arrow_rounded),
-      label: Text(
-          _status == 'in_progress' ? 'Kết thúc chuyến' : 'Bắt đầu chuyến'));
+  Widget _button() {
+    final isCompleted = _status == 'completed';
+    final isInProgress = _status == 'in_progress';
+
+    if (isCompleted) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: null,
+          icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.grey),
+          label: const Text('Chuyến xe đã hoàn tất'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: _busy ? null : _confirmToggle,
+        style: FilledButton.styleFrom(
+          backgroundColor: isInProgress ? const Color(0xFFD94E41) : AppColors.teal,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        icon: _busy
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              )
+            : Icon(isInProgress ? Icons.stop_rounded : Icons.play_arrow_rounded),
+        label: Text(
+          _busy
+              ? 'Đang xử lý...'
+              : isInProgress
+                  ? 'Kết thúc chuyến'
+                  : 'Bắt đầu chuyến',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
 }
 
 class _Stop {
