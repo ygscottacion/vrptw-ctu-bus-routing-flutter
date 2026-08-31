@@ -1,18 +1,30 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.services.student_routing.schemas import (
     SchoolConfig, Vehicle, Station, OptimizationOptions, SessionId, TripType, LocationSchema
 )
 from app.services.student_routing.student_routing_service import StudentRoutingService
+from app.services.student_routing.helpers.distance_matrix import StaticDistanceMatrixProvider
+from app.services.student_routing import config as routing_config
 
 
 class VRPTWSolverService:
     """
     Adapter Service tổng hợp VRPTW Solver Pipeline:
     Kết nối API Backend v1 với StudentRoutingService (Sweep Algorithm + Tabu Search Optimization).
+
+    Parameters
+    ----------
+    use_static_matrix : bool, default False
+        Nếu True, bỏ qua OSRM và dùng StaticDistanceMatrixProvider (Haversine + tốc độ trung bình).
+        Dùng trong môi trường test để tránh phụ thuộc network và đảm bảo tốc độ ổn định.
     """
 
-    def __init__(self):
+    def __init__(self, use_static_matrix: bool = False):
         self.routing_service = StudentRoutingService()
+        self._use_static_matrix = use_static_matrix
+        if use_static_matrix:
+            # Monkey-patch distance provider sang static để bypass OSRM
+            self.routing_service.distance_provider = StaticDistanceMatrixProvider()
 
     def solve(
         self,
@@ -21,7 +33,11 @@ class VRPTWSolverService:
         vehicles: List[Dict[str, Any]],
         session_id: SessionId = SessionId.MORNING_1,
         trip_type: TripType = TripType.PICKUP,
+        tabu_max_iterations: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
+        # Cho phép override Tabu iterations (dùng trong test để giảm thời gian)
+        if tabu_max_iterations is not None:
+            self.routing_service.tabu_optimizer.max_iterations = tabu_max_iterations
         school_lat = depot.get("latitude", depot.get("lat", 10.0302))
         school_lng = depot.get("longitude", depot.get("lng", 105.7721))
 
@@ -74,7 +90,7 @@ class VRPTWSolverService:
                     if s.station_id == "SCHOOL":
                         continue
                     ordered_stops.append({
-                        "id": s.station_id,
+                        "id": s.station_id,       # Giữ nguyên UUID string gốc đã truyền vào
                         "name": s.station_name,
                         "arrival_time": s.arrival_time,
                         "departure_time": s.departure_time,

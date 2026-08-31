@@ -102,18 +102,10 @@ class ApiService {
   }
 
   /// 4. Lấy lịch trình tuyến xe của Tài Xế
-  Future<List<dynamic>> fetchDriverRoutes(int driverId) async {
-    final url =
-        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesDriver}$driverId');
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
-    if (_authToken != null) {
-      headers['Authorization'] = 'Bearer $_authToken';
-    }
-
+  Future<List<dynamic>> fetchDriverRoutes() async {
+    final url = Uri.parse('${ApiConfig.baseUrl}/routes');
     try {
-      final response = await http.get(url, headers: headers);
+      final response = await http.get(url, headers: _headers);
       if (response.statusCode == 200) {
         return json.decode(response.body) as List<dynamic>;
       } else {
@@ -152,7 +144,7 @@ class ApiService {
 
   /// One ticket is one reserved direction for a chosen service day and stop.
   Future<Map<String, dynamic>> bookTicket({
-    required int pickupLocationId,
+    required String pickupLocationId,
     required DateTime serviceDate,
     required String sessionId,
     required String tripType,
@@ -170,11 +162,11 @@ class ApiService {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_message(response));
     }
-    final data = json.decode(response.body) as List<dynamic>;
-    return Map<String, dynamic>.from(data.first as Map);
+    final data = json.decode(response.body) as Map<String, dynamic>;
+    return data;
   }
 
-  Future<Map<String, dynamic>> fetchRouteDetails(int routeId) async {
+  Future<Map<String, dynamic>> fetchRouteDetails(String routeId) async {
     final response = await http.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routeDetails}$routeId'),
       headers: _headers,
@@ -187,16 +179,16 @@ class ApiService {
       _post(ApiConfig.ticketsVerifyQr, {'qr_code': qrCode});
 
   Future<Map<String, dynamic>> reportIncident(
-          {required String title, String? description, int? vehicleId}) =>
+          {required String title, String? description, String? vehicleId}) =>
       _post(ApiConfig.incidents, {
         'title': title,
         if (description != null) 'description': description,
         if (vehicleId != null) 'vehicle_id': vehicleId
       });
 
-  Future<Map<String, dynamic>> startRoute(int routeId) =>
+  Future<Map<String, dynamic>> startRoute(String routeId) =>
       _patch('/routes/$routeId/start');
-  Future<Map<String, dynamic>> endRoute(int routeId) =>
+  Future<Map<String, dynamic>> endRoute(String routeId) =>
       _patch('/routes/$routeId/end');
 
   Future<Map<String, dynamic>> _post(
