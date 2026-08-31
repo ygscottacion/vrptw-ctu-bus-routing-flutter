@@ -17,12 +17,27 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_ROLE_KEY: str = ""
+    SUPABASE_JWT_SECRET: str = ""
     CRON_SECRET: str = "ctu_bus_cron_secret_2026_super_secure_x987"
 
     # Security Settings
     SECRET_KEY: str = "changeme_secret_key_please_set_in_env"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
+
+    @property
+    def SUPABASE_JWKS_URL(self) -> str:
+        if self.SUPABASE_URL:
+            base = self.SUPABASE_URL.rstrip("/")
+            return f"{base}/auth/v1/.well-known/jwks.json"
+        return ""
+
+    @property
+    def SUPABASE_ISSUER(self) -> str:
+        if self.SUPABASE_URL:
+            base = self.SUPABASE_URL.rstrip("/")
+            return f"{base}/auth/v1"
+        return ""
 
     model_config = SettingsConfigDict(
         env_file=".env",
