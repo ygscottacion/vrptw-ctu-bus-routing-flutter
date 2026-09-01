@@ -16,7 +16,8 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
     {
       'id': 1,
       'title': 'Thông báo điều phối chuyến giờ cao điểm',
-      'content': 'Tài xế chuẩn bị tăng cường 1 lượt chạy lúc 17:15 từ Khu II sang Khu A.',
+      'content':
+          'Tài xế chuẩn bị tăng cường 1 lượt chạy lúc 17:15 từ Khu II sang Khu A.',
       'type': 'dispatch',
       'time': '10 phút trước',
       'priority': 'high',
@@ -24,7 +25,8 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
     {
       'id': 2,
       'title': 'Cảnh báo kẹt xe đường 3/2',
-      'content': 'Lưu ý kẹt xe đoạn giao đường 3/2 và Nguyễn Văn Linh. Hãy đi chầm chậm và chú ý an toàn.',
+      'content':
+          'Lưu ý kẹt xe đoạn giao đường 3/2 và Nguyễn Văn Linh. Hãy đi chầm chậm và chú ý an toàn.',
       'type': 'traffic',
       'time': '45 phút trước',
       'priority': 'medium',
@@ -32,7 +34,8 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
     {
       'id': 3,
       'title': 'Lịch kiểm tra kỹ thuật định kỳ',
-      'content': 'Xe buýt #402 dự kiến bảo dưỡng dầu máy vào cuối ca hôm nay lúc 18:30.',
+      'content':
+          'Xe buýt #402 dự kiến bảo dưỡng dầu máy vào cuối ca hôm nay lúc 18:30.',
       'type': 'maintenance',
       'time': '2 giờ trước',
       'priority': 'normal',
@@ -64,19 +67,31 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Loại sự cố:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('Loại sự cố:',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     value: category,
                     decoration: InputDecoration(
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'Kẹt xe nghiêm trọng', child: Text('Kẹt xe nghiêm trọng')),
-                      DropdownMenuItem(value: 'Xe hỏng / Sự cố máy', child: Text('Xe hỏng / Sự cố máy')),
-                      DropdownMenuItem(value: 'Va chạm giao thông', child: Text('Va chạm giao thông')),
-                      DropdownMenuItem(value: 'Thời tiết xấu / Ngập nước', child: Text('Thời tiết xấu / Ngập nước')),
+                      DropdownMenuItem(
+                          value: 'Kẹt xe nghiêm trọng',
+                          child: Text('Kẹt xe nghiêm trọng')),
+                      DropdownMenuItem(
+                          value: 'Xe hỏng / Sự cố máy',
+                          child: Text('Xe hỏng / Sự cố máy')),
+                      DropdownMenuItem(
+                          value: 'Va chạm giao thông',
+                          child: Text('Va chạm giao thông')),
+                      DropdownMenuItem(
+                          value: 'Thời tiết xấu / Ngập nước',
+                          child: Text('Thời tiết xấu / Ngập nước')),
                       DropdownMenuItem(value: 'Khác', child: Text('Khác')),
                     ],
                     onChanged: (v) {
@@ -84,24 +99,30 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
                     },
                   ),
                   const SizedBox(height: 12),
-                  const Text('Tiêu đề sự cố:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('Tiêu đề sự cố:',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 4),
                   TextField(
                     controller: titleCtrl,
                     decoration: InputDecoration(
                       hintText: 'VD: Xe bị xẹp lốp tại đường 3/2',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text('Mô tả chi tiết (không bắt buộc):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const Text('Mô tả chi tiết (không bắt buộc):',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 4),
                   TextField(
                     controller: descCtrl,
                     maxLines: 3,
                     decoration: InputDecoration(
                       hintText: 'Nhập vị trí chính xác và tình trạng xe...',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
                     ),
                   ),
                 ],
@@ -117,14 +138,16 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () async {
-              final title = titleCtrl.text.trim().isEmpty ? category : titleCtrl.text.trim();
+              final title = titleCtrl.text.trim().isEmpty
+                  ? category
+                  : titleCtrl.text.trim();
               final desc = descCtrl.text.trim();
               Navigator.pop(c);
               try {
                 await widget.api.reportIncident(
                   title: title,
                   description: desc,
-                  vehicleId: 402,
+                  vehicleId: '402',
                 );
                 setState(() {
                   _myIncidents.insert(0, {
@@ -187,7 +210,8 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.warning_amber_rounded, size: 40, color: Colors.white),
+                const Icon(Icons.warning_amber_rounded,
+                    size: 40, color: Colors.white),
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -214,7 +238,8 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFFBA1A1A),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -240,16 +265,20 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
             for (final inc in _myIncidents)
               Card(
                 margin: const EdgeInsets.only(bottom: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
                 child: ListTile(
                   leading: const CircleAvatar(
                     backgroundColor: Colors.redAccent,
-                    child: Icon(Icons.report_problem_rounded, color: Colors.white),
+                    child:
+                        Icon(Icons.report_problem_rounded, color: Colors.white),
                   ),
-                  title: Text(inc['title'].toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  title: Text(inc['title'].toString(),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text('${inc['desc']}\nThời gian: ${inc['time']}'),
                   trailing: Chip(
-                    label: Text(inc['status'].toString(), style: const TextStyle(fontSize: 11)),
+                    label: Text(inc['status'].toString(),
+                        style: const TextStyle(fontSize: 11)),
                     backgroundColor: Colors.amber.shade100,
                   ),
                 ),
@@ -319,14 +348,16 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
                             ),
                             Text(
                               alert['time'].toString(),
-                              style: const TextStyle(color: Colors.grey, fontSize: 11),
+                              style: const TextStyle(
+                                  color: Colors.grey, fontSize: 11),
                             ),
                           ],
                         ),
                         const SizedBox(height: 6),
                         Text(
                           alert['content'].toString(),
-                          style: const TextStyle(color: Colors.black87, fontSize: 13),
+                          style: const TextStyle(
+                              color: Colors.black87, fontSize: 13),
                         ),
                       ],
                     ),
