@@ -55,4 +55,10 @@ class ApiConfig {
   static const String routeDetails =
       '/routes/'; // Sua: bo '/details/' theo dung endpoint GET /routes/{route_id}
   static const String incidents = '/incidents/';
+
+  // T5 — GPS Tracking (D5 - Lợi)
+  // POST /gps/            → tài xế gửi vị trí định kỳ
+  // GET  /gps/{id}/latest → sinh viên xem xe đang ở đâu
+  static const String gpsPost = '/gps/';
+  static const String gpsLatest = '/gps/';
 }

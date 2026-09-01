@@ -31,7 +31,7 @@
 
 | ID | Tính năng | Các bước thực hiện (Steps) | Dữ liệu Test (Input) | Kết quả mong đợi (Expected) | Trạng thái | Nơi lưu Evidence |
 |---|---|---|---|---|---|---|
-| TC_GPS_01 | Gửi vị trí Foreground | 1. Tài xế bấm "Bắt đầu ca" / Start Shift<br>2. Di chuyển thực tế<br>3. Kiểm tra log API POST GPS | Tài xế 1 | Cứ 15-20 giây app tự gọi API gửi tọa độ một lần khi màn hình bật. | [ ] | |
+| TC_GPS_01 | Gửi vị trí Foreground | 1. Tài xế bấm "Bắt đầu ca" / Start Shift<br>2. Di chuyển thực tế<br>3. Kiểm tra log API POST GPS | Tài xế 1 | Cứ 15-20 giây app tự gọi API gửi tọa độ một lần khi màn hình bật. | [x] | |
 | TC_SEC_01 | RLS Data Isolation | 1. Đăng nhập Sinh viên A<br>2. Cố gọi API lấy vé của Sinh viên B | Token A, Ticket ID của B | API trả về 403 Forbidden hoặc 404 Not Found. | [ ] | |
 
 *(Các kịch bản sẽ được bổ sung tiếp trong quá trình tích hợp API ở T3-T5)*
