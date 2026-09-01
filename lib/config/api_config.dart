@@ -52,6 +52,7 @@ class ApiConfig {
   static const String ticketsBuy =
       '/tickets/reserve'; // Da doi tu '/tickets/buy' theo ban giao T4 cua Minh/Nha
   static const String ticketsVerifyQr = '/tickets/verify-qr';
-  static const String routeDetails = '/routes/';
+  static const String routeDetails =
+      '/routes/'; // Sua: bo '/details/' theo dung endpoint GET /routes/{route_id}
   static const String incidents = '/incidents/';
 }

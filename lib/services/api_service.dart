@@ -141,15 +141,9 @@ class ApiService {
         if (vehicleId != null) 'vehicle_id': vehicleId,
       });
 
-<<<<<<< HEAD
-  Future<Map<String, dynamic>> startRoute(dynamic routeId) =>
-      _patch('/routes/$routeId/start');
-  Future<Map<String, dynamic>> endRoute(dynamic routeId) =>
-=======
   Future<Map<String, dynamic>> startRoute(String routeId) =>
       _patch('/routes/$routeId/start');
   Future<Map<String, dynamic>> endRoute(String routeId) =>
->>>>>>> main
       _patch('/routes/$routeId/end');
 
   Future<Map<String, dynamic>> _post(

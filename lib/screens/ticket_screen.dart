@@ -29,6 +29,15 @@ class _TicketScreenState extends State<TicketScreen>
   bool _isBuying = false;
   String? _buyError;
 
+  /// Cache Future theo routeId de tranh goi lai API moi lan rebuild widget
+  /// (FutureBuilder se goi lai future moi lan build neu khong cache).
+  final Map<String, Future<Map<String, dynamic>>> _routeDetailsCache = {};
+
+  Future<Map<String, dynamic>> _routeFuture(String routeId) {
+    return _routeDetailsCache.putIfAbsent(
+        routeId, () => widget.api.fetchRouteDetails(routeId));
+  }
+
   // ─── Ngày chạy / Deadline 22:00 (Asia/Ho_Chi_Minh) ─────────
   // Ghi chú: Việt Nam không dùng giờ mùa hè (DST) nên lệch cố định UTC+7
   // là đủ chính xác cho MVP. Nếu sau này cần xử lý đa timezone thật sự,
@@ -263,6 +272,152 @@ class _TicketScreenState extends State<TicketScreen>
     );
   }
 
+  String _friendlySession(String sessionId) {
+    switch (sessionId) {
+      case 'MORNING_1':
+        return '07:00 sáng';
+      case 'MORNING_2':
+        return '08:30 sáng';
+      case 'NOON_1':
+        return '10:00 trưa';
+      case 'NOON_2':
+        return '11:30 trưa';
+      default:
+        return sessionId;
+    }
+  }
+
+  String _friendlyTrip(String tripType) =>
+      tripType == 'pickup' ? 'Chiều đi' : 'Chiều về';
+
+  /// Panel chi tiet tuyen, tai lazy qua FutureBuilder khi ve da assigned.
+  /// Xu ly rieng truong hop BUG-VRPTW-01: route tra ve thanh cong nhung
+  /// route_stops thieu (chi co depot) - khong coi la loi, chi bao "dang cap nhat".
+  Widget _buildRouteDetailsPanel(String routeId) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _routeFuture(routeId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+            child: Center(
+              child: SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: AppColors.teal)),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+            child: Column(
+              children: [
+                const Text('Không thể tải thông tin tuyến.',
+                    style: TextStyle(color: Colors.red, fontSize: 13)),
+                TextButton(
+                  onPressed: () =>
+                      setState(() => _routeDetailsCache.remove(routeId)),
+                  child: const Text('Thử lại'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final route = snapshot.data;
+        if (route == null) return const SizedBox.shrink();
+
+        final sessionId = route['session_id']?.toString() ?? '';
+        final tripType = route['trip_type']?.toString() ?? '';
+        final vehicleId = route['vehicle_id']?.toString();
+        final stops = (route['stops'] as List<dynamic>? ?? []);
+        final passengerCount = route['passenger_count'] as int? ?? 0;
+        // Ky vong: 1 depot + so hanh khach da assigned. Neu thieu -> BUG-VRPTW-01
+        // (route_stops chua day du), hien thong bao thay vi coi la loi.
+        final incomplete = stops.length < (passengerCount + 1);
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Thông tin tuyến',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: AppSpacing.xs),
+              if (sessionId.isNotEmpty || tripType.isNotEmpty)
+                Text(
+                  '${_friendlyTrip(tripType)} • ${_friendlySession(sessionId)}',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.textSecondary),
+                ),
+              if (vehicleId != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Xe: #${vehicleId.length > 8 ? vehicleId.substring(0, 8) : vehicleId}',
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ),
+              const SizedBox(height: AppSpacing.sm),
+              if (incomplete)
+                Container(
+                  padding: const EdgeInsets.all(AppSpacing.sm),
+                  decoration: BoxDecoration(
+                    color: AppColors.orange.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: const Text(
+                    'Thông tin điểm dừng đang được hệ thống cập nhật. Vui lòng kiểm tra lại sau.',
+                    style: TextStyle(fontSize: 12, color: AppColors.orange),
+                  ),
+                )
+              else
+                ...stops.map((s) {
+                  final stop = s as Map<String, dynamic>;
+                  final location = stop['location'] as Map<String, dynamic>?;
+                  final name = location?['name']?.toString() ?? 'Điểm dừng';
+                  final order = stop['stop_order']?.toString() ?? '';
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 18,
+                          height: 18,
+                          alignment: Alignment.center,
+                          decoration: const BoxDecoration(
+                              color: AppColors.tealBg, shape: BoxShape.circle),
+                          child: Text(order,
+                              style: const TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.teal)),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                            child: Text(name,
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textPrimary))),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildTicketCard(_MyTicket t) {
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -308,19 +463,7 @@ class _TicketScreenState extends State<TicketScreen>
                     borderRadius: BorderRadius.circular(AppRadius.full),
                   ),
                   child: Text(
-<<<<<<< HEAD
-                    t.status == 'assigned' 
-                        ? 'Sẵn sàng' 
-                        : t.status == 'reserved' 
-                            ? 'Chờ xếp xe' 
-                            : t.status == 'used' 
-                                ? 'Đã đi' 
-                                : t.status == 'cancelled' 
-                                    ? 'Đã hủy' 
-                                    : 'Hết hạn',
-=======
                     t.statusLabel,
->>>>>>> main
                     style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -331,9 +474,6 @@ class _TicketScreenState extends State<TicketScreen>
             ),
           ),
 
-<<<<<<< HEAD
-          // Khu vực trung tâm: Hiển thị tuỳ theo trạng thái vé
-=======
           if (t.status == 'reserved') ...[
             const SizedBox(height: AppSpacing.xl),
             Icon(Icons.hourglass_top_rounded,
@@ -355,7 +495,6 @@ class _TicketScreenState extends State<TicketScreen>
           ],
 
           // QR - chi hien khi da assigned (co tuyen that).
->>>>>>> main
           if (t.status == 'assigned') ...[
             const SizedBox(height: AppSpacing.xl),
             Container(
@@ -367,18 +506,10 @@ class _TicketScreenState extends State<TicketScreen>
                     color: AppColors.teal.withValues(alpha: 0.2), width: 2),
               ),
               child: QrImageView(
-<<<<<<< HEAD
-                data: t.qrData,
-                version: QrVersions.auto,
-                size: 200,
-                backgroundColor: Colors.white,
-              ),
-=======
                   data: t.qrData,
                   version: QrVersions.auto,
                   size: 200,
                   backgroundColor: Colors.white),
->>>>>>> main
             ),
             const SizedBox(height: AppSpacing.md),
             const Text(
@@ -390,67 +521,7 @@ class _TicketScreenState extends State<TicketScreen>
             ),
             const SizedBox(height: AppSpacing.lg),
             const Divider(height: 1, color: AppColors.border),
-          ] else if (t.status == 'reserved') ...[
-            const SizedBox(height: AppSpacing.xl),
-            Container(
-              padding: const EdgeInsets.all(20),
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              decoration: BoxDecoration(
-                color: AppColors.orange.withOpacity(0.06),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: AppColors.orange.withOpacity(0.2),
-                  width: 1.5,
-                ),
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.hourglass_empty_rounded,
-                    color: AppColors.orange,
-                    size: 48,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Đang tính toán tối ưu lộ trình',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Hệ thống sẽ tự động gán xe và giờ đón chi tiết sau mốc 22:00 của ngày trước ngày chạy.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade700,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            const Divider(height: 1, color: AppColors.border),
-          ] else if (t.status == 'used') ...[
-            const SizedBox(height: AppSpacing.xl),
-            const Icon(
-              Icons.check_circle_rounded,
-              color: Colors.green,
-              size: 54,
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Đã điểm danh lên xe',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
+            _buildRouteDetailsPanel(t.routeId!),
             const Divider(height: 1, color: AppColors.border),
           ],
 
@@ -939,11 +1010,7 @@ class _TicketScreenState extends State<TicketScreen>
     Map<String, dynamic> ticket;
     try {
       ticket = await widget.api.bookTicket(
-<<<<<<< HEAD
-        pickupLocationId: _selectedRoute!,
-=======
         pickupLocationId: _selectedRoute!, // UUID string, khong parse int nua
->>>>>>> main
         serviceDate: _serviceDate,
         sessionId: _sessionId,
         tripType: _tripType,
