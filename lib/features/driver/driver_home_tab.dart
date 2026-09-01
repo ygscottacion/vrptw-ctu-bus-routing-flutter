@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../../services/gps_service.dart';
 import '../../theme/app_theme.dart';
 import 'widgets/driver_shift_button.dart';
 import 'widgets/driver_route_card.dart';
@@ -76,17 +77,41 @@ class _DriverHomeTabState extends State<DriverHomeTab>
     }
   }
 
-  void _toggleShift() {
+  Future<void> _toggleShift() async {
+    final nextRoute = _assignedRoutes.isNotEmpty
+        ? Map<String, dynamic>.from(_assignedRoutes.first as Map)
+        : null;
+    final routeId = nextRoute?['id']?.toString() ?? '';
+
     setState(() => _isShiftActive = !_isShiftActive);
-    final msg = _isShiftActive
-        ? 'Đã bắt đầu ca làm việc! Hệ thống đang phát vị trí xe buýt.'
-        : 'Đã kết thúc ca làm việc.';
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: _isShiftActive ? AppColors.teal : Colors.grey[800],
-      ),
-    );
+
+    if (_isShiftActive) {
+      final success = await GpsService().startTracking(
+        routeId: routeId,
+        api: widget.api,
+      );
+      if (mounted) {
+        final msg = success
+            ? 'Đã bắt đầu ca làm việc! Hệ thống đang phát vị trí xe buýt định kỳ 15s/lần.'
+            : 'Đã bật ca, nhưng vui lòng cấp quyền vị trí để phát GPS xe buýt.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: success ? AppColors.teal : Colors.orange[800],
+          ),
+        );
+      }
+    } else {
+      GpsService().stopTracking();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Đã kết thúc ca làm việc. Đã dừng phát GPS.'),
+            backgroundColor: Colors.grey[800],
+          ),
+        );
+      }
+    }
   }
 
   @override

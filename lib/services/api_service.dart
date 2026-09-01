@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../features/auth/auth_repository.dart';
@@ -8,7 +8,6 @@ class ApiService {
 
   final AuthRepository _authRepo;
 
-  /// Lấy token Supabase mới nhất mỗi lần gọi API — tránh dùng token cũ đã hết hạn.
   String? get _authToken => _authRepo.currentAccessToken;
 
   Map<String, String> get _headers => {
@@ -16,15 +15,12 @@ class ApiService {
         if (_authToken != null) 'Authorization': 'Bearer $_authToken',
       };
 
-  /// Lấy hồ sơ và role thật từ backend, dùng để điều hướng sau đăng nhập.
   Future<Map<String, dynamic>?> fetchMe() async {
     if (_authToken == null) return null;
     try {
       final response = await http
-          .get(
-            Uri.parse('${ApiConfig.baseUrl}${ApiConfig.authMe}'),
-            headers: _headers,
-          )
+          .get(Uri.parse('${ApiConfig.baseUrl}${ApiConfig.authMe}'),
+              headers: _headers)
           .timeout(const Duration(seconds: 6));
       if (response.statusCode != 200) return null;
       return json.decode(response.body) as Map<String, dynamic>;
@@ -33,7 +29,6 @@ class ApiService {
     }
   }
 
-  /// Lấy danh sách trạm dừng. location.id la UUID (String) tu Ngay 4.
   Future<List<dynamic>> fetchLocations() async {
     final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.locations}');
     try {
@@ -49,18 +44,15 @@ class ApiService {
     }
   }
 
-  /// Lấy danh sách xe buýt
   Future<List<dynamic>> fetchVehicles() async {
     final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.vehicles}');
     final response = await http.get(url, headers: _headers);
     if (response.statusCode == 200) {
       return json.decode(response.body) as List<dynamic>;
     }
-    throw Exception('Không thể tải danh sách xe buýt: ${response.statusCode}');
+    throw Exception('Khong the tai danh sach xe buyt: ${response.statusCode}');
   }
 
-  /// Lấy lịch trình tuyến xe của Tài Xế.
-  /// driverId la UUID (String) vi trung voi profiles.id sau migration.
   Future<List<dynamic>> fetchDriverRoutes(String driverId) async {
     final url =
         Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesDriver}$driverId');
@@ -68,10 +60,9 @@ class ApiService {
     if (response.statusCode == 200) {
       return json.decode(response.body) as List<dynamic>;
     }
-    throw Exception('Không thể tải lịch trình tài xế: ${response.statusCode}');
+    throw Exception('Khong the tai lich trinh tai xe: ${response.statusCode}');
   }
 
-  /// Lấy danh sách tuyến khả dụng cho hành khách
   Future<List<dynamic>> fetchActiveRoutes() async {
     final response = await http.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesActive}'),
@@ -80,7 +71,7 @@ class ApiService {
     if (response.statusCode == 200) {
       return json.decode(response.body) as List<dynamic>;
     }
-    throw Exception('Không thể tải danh sách tuyến: ${response.statusCode}');
+    throw Exception('Khong the tai danh sach tuyen: ${response.statusCode}');
   }
 
   Future<List<dynamic>> fetchMyTickets() async {
@@ -92,8 +83,6 @@ class ApiService {
     return json.decode(response.body) as List<dynamic>;
   }
 
-  /// One ticket is one reserved direction for a chosen service day and stop.
-  /// pickupLocationId la UUID (String) tu Ngay 4 - khong con la int.
   Future<Map<String, dynamic>> bookTicket({
     required String pickupLocationId,
     required DateTime serviceDate,
@@ -113,11 +102,9 @@ class ApiService {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_message(response));
     }
-    final data = json.decode(response.body) as Map<String, dynamic>;
-    return data;
+    return json.decode(response.body) as Map<String, dynamic>;
   }
 
-  /// routeId la UUID (String).
   Future<Map<String, dynamic>> fetchRouteDetails(String routeId) async {
     final response = await http.get(
       Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routeDetails}$routeId'),
@@ -141,16 +128,55 @@ class ApiService {
         if (vehicleId != null) 'vehicle_id': vehicleId,
       });
 
-<<<<<<< HEAD
-  Future<Map<String, dynamic>> startRoute(dynamic routeId) =>
-      _patch('/routes/$routeId/start');
-  Future<Map<String, dynamic>> endRoute(dynamic routeId) =>
-=======
   Future<Map<String, dynamic>> startRoute(String routeId) =>
       _patch('/routes/$routeId/start');
   Future<Map<String, dynamic>> endRoute(String routeId) =>
->>>>>>> main
       _patch('/routes/$routeId/end');
+
+  // T5 - GPS Tracking
+  Future<void> postGpsLog({
+    required String routeId,
+    required double latitude,
+    required double longitude,
+    double heading = 0.0,
+    double speed = 0.0,
+    double accuracy = 0.0,
+  }) async {
+    try {
+      await http
+          .post(
+            Uri.parse('${ApiConfig.baseUrl}${ApiConfig.gpsPost}'),
+            headers: _headers,
+            body: json.encode({
+              'route_id': routeId,
+              'latitude': latitude,
+              'longitude': longitude,
+              'heading': heading,
+              'speed': speed,
+              'accuracy': accuracy,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {}
+  }
+
+  Future<Map<String, dynamic>?> fetchLatestGps(String routeId) async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse(
+                '${ApiConfig.baseUrl}${ApiConfig.gpsLatest}$routeId/latest'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<Map<String, dynamic>> _post(
       String path, Map<String, dynamic> body) async {
@@ -166,7 +192,8 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> _patch(String path) async {
-    final response = await http.patch(Uri.parse('${ApiConfig.baseUrl}$path'),
+    final response = await http.patch(
+        Uri.parse('${ApiConfig.baseUrl}$path'),
         headers: _headers);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_message(response));
@@ -178,9 +205,9 @@ class ApiService {
     try {
       return (json.decode(response.body) as Map<String, dynamic>)['detail']
               ?.toString() ??
-          'Yêu cầu thất bại (${response.statusCode})';
+          'Yeu cau that bai (${response.statusCode})';
     } catch (_) {
-      return 'Yêu cầu thất bại (${response.statusCode})';
+      return 'Yeu cau that bai (${response.statusCode})';
     }
   }
 }

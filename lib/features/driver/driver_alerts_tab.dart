@@ -124,7 +124,7 @@ class _DriverAlertsTabState extends State<DriverAlertsTab> {
                 await widget.api.reportIncident(
                   title: title,
                   description: desc,
-                  vehicleId: 402,
+                  vehicleId: '402',
                 );
                 setState(() {
                   _myIncidents.insert(0, {

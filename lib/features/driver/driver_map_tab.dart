@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../../services/api_service.dart';
+import '../../services/gps_service.dart';
 import '../../theme/app_theme.dart';
 
 class DriverMapTab extends StatefulWidget {
@@ -208,16 +210,50 @@ class _DriverMapTabState extends State<DriverMapTab>
                                 color: const Color(0xFFFF5D3D),
                                 strokeWidth: 4)
                           ]),
-                        MarkerLayer(markers: [
-                          for (var i = 0; i < _stops.length; i++)
-                            Marker(
-                                point: _stops[i].point,
-                                width: 38,
-                                height: 38,
-                                child: _Pin(
-                                    active: _status == 'in_progress' && i == 0))
-                        ]),
-                      ]),
+                         StreamBuilder<Position>(
+                           stream: GpsService().positionStream,
+                           initialData: GpsService().lastPosition,
+                           builder: (context, snapshot) {
+                             final markers = <Marker>[
+                               for (var i = 0; i < _stops.length; i++)
+                                 Marker(
+                                     point: _stops[i].point,
+                                     width: 38,
+                                     height: 38,
+                                     child: _Pin(
+                                         active: _status == 'in_progress' && i == 0)),
+                             ];
+
+                             if (snapshot.hasData && snapshot.data != null) {
+                               final pos = snapshot.data!;
+                               markers.add(
+                                 Marker(
+                                   point: LatLng(pos.latitude, pos.longitude),
+                                   width: 46,
+                                   height: 46,
+                                   child: Container(
+                                     decoration: BoxDecoration(
+                                       color: AppColors.teal,
+                                       shape: BoxShape.circle,
+                                       border: Border.all(color: Colors.white, width: 3),
+                                       boxShadow: const [
+                                         BoxShadow(color: Colors.black26, blurRadius: 8)
+                                       ],
+                                     ),
+                                     child: const Icon(
+                                       Icons.directions_bus_rounded,
+                                       color: Colors.white,
+                                       size: 24,
+                                     ),
+                                   ),
+                                 ),
+                               );
+                             }
+
+                             return MarkerLayer(markers: markers);
+                           },
+                         ),
+                       ]),
                   SafeArea(
                       child: Padding(
                           padding: const EdgeInsets.all(12),
