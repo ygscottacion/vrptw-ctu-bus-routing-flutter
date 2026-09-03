@@ -15,11 +15,10 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   String _selectedRoute = 'all';
-  LatLng _busPos = const LatLng(10.0300, 105.7683);
-  double _busLat = 10.0300;
-  double _busDir = 0.0002;
-  Timer? _busTimer;
+  Timer? _pollingTimer;
   List<_BusStop> _dynamicStops = [];
+  List<dynamic> _activeRoutes = [];
+  Map<String, LatLng> _realBusPositions = {};
 
   static const _busStops = [
     _BusStop(LatLng(10.0299, 105.7684), 'Depot - ĐH Cần Thơ (Khu II)', 'start',
@@ -52,19 +51,50 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _loadBackendLocations();
+      if (mounted) {
+        _loadBackendLocations();
+        _loadActiveRoutes();
+      }
     });
-    // TODO Ngay 6: xoa Timer gia lap nay, thay bang polling API vi tri that moi 15 giay
-    // (theo audit_lib_screens_day1.md - vi pham yeu cau MVP "khong hien thi xe gia").
-    _busTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
-      if (!mounted) return;
-      setState(() {
-        _busLat += _busDir;
-        if (_busLat > 10.0500) _busDir = -0.0002;
-        if (_busLat < 10.0300) _busDir = 0.0002;
-        _busPos = LatLng(_busLat, 105.7801 + (_busLat - 10.0300) * 0.5);
-      });
+    _startGpsPolling();
+  }
+
+  Future<void> _loadActiveRoutes() async {
+    try {
+      final routes = await widget.api.fetchActiveRoutes();
+      if (mounted) {
+        setState(() {
+          _activeRoutes = routes;
+        });
+        _pollGpsPositions();
+      }
+    } catch (_) {}
+  }
+
+  void _startGpsPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      _pollGpsPositions();
     });
+  }
+
+  Future<void> _pollGpsPositions() async {
+    if (_activeRoutes.isEmpty) return;
+    for (final route in _activeRoutes) {
+      final routeId = route['id']?.toString();
+      if (routeId == null) continue;
+      try {
+        final gps = await widget.api.fetchLatestGps(routeId);
+        if (gps != null && gps.containsKey('latitude') && gps.containsKey('longitude')) {
+          final lat = (gps['latitude'] as num).toDouble();
+          final lng = (gps['longitude'] as num).toDouble();
+          if (mounted) {
+            setState(() {
+              _realBusPositions[routeId] = LatLng(lat, lng);
+            });
+          }
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> _loadBackendLocations() async {
@@ -93,7 +123,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
-    _busTimer?.cancel();
+    _pollingTimer?.cancel();
     super.dispose();
   }
 
@@ -144,9 +174,15 @@ class _MapScreenState extends State<MapScreen> {
   Widget _buildFilterBar() {
     final filters = [
       ('all', 'Tất cả'),
-      ('1', 'Tuyến 1'),
-      ('2', 'Tuyến 2'),
-      ('3', 'Tuyến 3'),
+      if (_activeRoutes.isEmpty) ...[
+        ('1', 'Tuyến 1'),
+        ('2', 'Tuyến 2'),
+        ('3', 'Tuyến 3'),
+      ] else ..._activeRoutes.map((r) {
+        final id = r['id'].toString();
+        final name = r['name']?.toString() ?? 'Tuyến ${id.length > 4 ? id.substring(0, 4) : id}';
+        return (id, name);
+      }),
     ];
     return Container(
       color: AppColors.white,
@@ -244,27 +280,34 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ),
                 )),
-            // Animated bus marker
-            Marker(
-              point: _busPos,
-              width: 44,
-              height: 44,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.teal,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                        color: AppColors.teal.withValues(alpha: 0.5),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3))
-                  ],
+            // Real bus markers
+            ..._realBusPositions.entries.map((entry) {
+              final routeId = entry.key;
+              final pos = entry.value;
+              if (_selectedRoute != 'all' && _selectedRoute != routeId) {
+                return Marker(point: pos, width: 0, height: 0, child: const SizedBox());
+              }
+              return Marker(
+                point: pos,
+                width: 44,
+                height: 44,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.teal,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                          color: AppColors.teal.withValues(alpha: 0.5),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3))
+                    ],
+                  ),
+                  child: const Center(
+                      child: Text('🚌', style: TextStyle(fontSize: 20))),
                 ),
-                child: const Center(
-                    child: Text('🚌', style: TextStyle(fontSize: 20))),
-              ),
-            ),
+              );
+            }),
           ],
         ),
       ],
@@ -306,7 +349,10 @@ class _MapScreenState extends State<MapScreen> {
                 child: Text(
                   _selectedRoute == 'all'
                       ? 'Tất cả tuyến'
-                      : 'Tuyến $_selectedRoute',
+                      : _activeRoutes.firstWhere(
+                          (r) => r['id'].toString() == _selectedRoute, 
+                          orElse: () => {'name': 'Tuyến $_selectedRoute'}
+                        )['name']?.toString() ?? 'Tuyến $_selectedRoute',
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
