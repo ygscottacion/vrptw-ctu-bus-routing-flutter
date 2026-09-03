@@ -15,6 +15,7 @@ import sys
 import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
+#SeedPassword = 'TestPassword123!'
 def seed():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
