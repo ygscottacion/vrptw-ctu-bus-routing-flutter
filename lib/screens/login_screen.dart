@@ -61,13 +61,19 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('🚌', style: TextStyle(fontSize: 56)),
+              Semantics(
+                label: 'Biểu tượng xe buýt',
+                child: const Text('🚌', style: TextStyle(fontSize: 56)),
+              ),
               const SizedBox(height: AppSpacing.md),
-              const Text('MyCTU BUS',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary)),
+              Semantics(
+                header: true,
+                child: const Text('MyCTU BUS',
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary)),
+              ),
               const SizedBox(height: AppSpacing.lg),
               TextField(
                 controller: _emailController,
@@ -90,8 +96,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               if (_errorText != null) ...[
                 const SizedBox(height: AppSpacing.sm),
-                Text(_errorText!,
-                    style: const TextStyle(color: AppColors.red, fontSize: 13)),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(_errorText!,
+                      style: const TextStyle(color: AppColors.red, fontSize: 13)),
+                ),
               ],
               const SizedBox(height: AppSpacing.lg),
               SizedBox(
