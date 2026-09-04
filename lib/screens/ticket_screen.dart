@@ -259,8 +259,11 @@ class _TicketScreenState extends State<TicketScreen>
             Icon(Icons.directions_bus_outlined,
                 size: 64, color: AppColors.textMuted.withValues(alpha: 0.5)),
             const SizedBox(height: AppSpacing.md),
-            const Text('Bạn chưa có vé nào.',
-                style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+            Semantics(
+              liveRegion: true,
+              child: const Text('Bạn chưa có vé nào.',
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+            ),
           ],
         ),
       );
@@ -419,7 +422,8 @@ class _TicketScreenState extends State<TicketScreen>
   }
 
   Widget _buildTicketCard(_MyTicket t) {
-    return Container(
+    return MergeSemantics(
+      child: Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.lg),
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -573,7 +577,7 @@ class _TicketScreenState extends State<TicketScreen>
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _detailItem(String label, String value,
@@ -737,9 +741,12 @@ class _TicketScreenState extends State<TicketScreen>
                             color: Colors.red, size: 20),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
-                            child: Text(_buyError!,
-                                style: const TextStyle(
-                                    color: Colors.red, fontSize: 13))),
+                            child: Semantics(
+                              liveRegion: true,
+                              child: Text(_buyError!,
+                                  style: const TextStyle(
+                                      color: Colors.red, fontSize: 13)),
+                            )),
                       ],
                     ),
                   ),
@@ -831,10 +838,13 @@ class _TicketScreenState extends State<TicketScreen>
     if (!option.bookable) {
       return Padding(
         padding: const EdgeInsets.only(top: AppSpacing.sm),
-        child: Text(
-            'Chuyến ngày $selectedStr đã quá hạn đặt vé (hạn chót $deadlineStr).',
-            style: const TextStyle(
-                color: Colors.red, fontSize: 13, fontWeight: FontWeight.w600)),
+        child: Semantics(
+          liveRegion: true,
+          child: Text(
+              'Chuyến ngày $selectedStr đã quá hạn đặt vé (hạn chót $deadlineStr).',
+              style: const TextStyle(
+                  color: Colors.red, fontSize: 13, fontWeight: FontWeight.w600)),
+        ),
       );
     }
 
@@ -918,11 +928,14 @@ class _TicketScreenState extends State<TicketScreen>
   Widget _sectionTitle(String text) => Padding(
         padding:
             const EdgeInsets.only(bottom: AppSpacing.md, top: AppSpacing.sm),
-        child: Text(text,
-            style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary)),
+        child: Semantics(
+          header: true,
+          child: Text(text,
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary)),
+        ),
       );
 
   Widget _buildRouteOption(_Route r) {
