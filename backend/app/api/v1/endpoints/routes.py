@@ -120,26 +120,45 @@ def generate_routes(
             detail="Job sinh tuyến cho lượt chạy này đã hoàn tất thành công trước đó.",
         )
 
-    # Create new RouteJob
-    new_job = RouteJob(
-        id=uuid.uuid4(),
-        service_date=request_in.service_date,
-        session_id=request_in.session_id,
-        trip_type=request_in.trip_type,
-        depot_location_id=request_in.depot_location_id,
-        status=RouteJobStatus.QUEUED,
+    # Check existing failed job to reuse/retry
+    failed_job = (
+        db.query(RouteJob)
+        .filter(
+            RouteJob.service_date == request_in.service_date,
+            RouteJob.session_id == request_in.session_id,
+            RouteJob.trip_type == request_in.trip_type,
+            RouteJob.status == RouteJobStatus.FAILED,
+        )
+        .first()
     )
-    db.add(new_job)
-    db.commit()
-    db.refresh(new_job)
 
-# Run worker process for the job
+    if failed_job:
+        job_to_run = failed_job
+        job_to_run.depot_location_id = request_in.depot_location_id
+        job_to_run.status = RouteJobStatus.QUEUED
+        job_to_run.error_message = None
+        db.commit()
+        db.refresh(job_to_run)
+    else:
+        job_to_run = RouteJob(
+            id=uuid.uuid4(),
+            service_date=request_in.service_date,
+            session_id=request_in.session_id,
+            trip_type=request_in.trip_type,
+            depot_location_id=request_in.depot_location_id,
+            status=RouteJobStatus.QUEUED,
+        )
+        db.add(job_to_run)
+        db.commit()
+        db.refresh(job_to_run)
+
+    # Run worker process for the job
     try:
-        updated_job = run_route_job_worker(db=db, job_id=new_job.id)
+        updated_job = run_route_job_worker(db=db, job_id=job_to_run.id)
         return _route_job_response(updated_job)
     except Exception:
-        db.refresh(new_job)
-        return _route_job_response(new_job)
+        db.refresh(job_to_run)
+        return _route_job_response(job_to_run)
 
 
 @router.get("", response_model=List[RouteResponse])
