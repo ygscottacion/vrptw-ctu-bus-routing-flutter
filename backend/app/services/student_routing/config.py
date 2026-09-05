@@ -42,3 +42,9 @@ DIVERSIFY_ROUNDS         = 15
 # ── School Location (CTU Main Campus) ──────────────────────────────────
 SCHOOL_LOCATION          = {"lat": 10.0302, "lng": 105.7721}
 SCHOOL_NAME              = "Trường Đại học Cần Thơ"
+
+# ── MVP Data Bounds & Limits ──────────────────────────────────────────
+MAX_BOOKINGS_PER_JOB     = 100      # Max reserved tickets in one job/session
+MAX_STATIONS_PER_JOB     = 100      # Max pickup stations in one job/session
+MAX_VEHICLES_PER_JOB     = 20       # Max vehicles in one job/session
+
