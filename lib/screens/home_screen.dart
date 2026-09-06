@@ -1,9 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:overlay_support/overlay_support.dart';
 import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onNavigateTab});
+  final Function(int)? onNavigateTab;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -67,8 +68,8 @@ class _HomeScreenState extends State<HomeScreen>
               Transform.translate(
                 offset: const Offset(0, -_walletOverlap),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.lg),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                   child: _buildWalletSection(context),
                 ),
               ),
@@ -145,7 +146,8 @@ class _HomeScreenState extends State<HomeScreen>
                 // Avatar button
                 GestureDetector(
                   onTap: () {
-                    // Navigate to Settings tab (index 4)
+                    widget.onNavigateTab
+                        ?.call(3); // Navigate to Settings tab (index 3)
                   },
                   child: Container(
                     width: 50,
@@ -200,8 +202,8 @@ class _HomeScreenState extends State<HomeScreen>
               color: AppColors.tealBg,
               shape: BoxShape.circle,
             ),
-            child: const Center(
-                child: Text('💳', style: TextStyle(fontSize: 14))),
+            child:
+                const Center(child: Text('💳', style: TextStyle(fontSize: 14))),
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
@@ -227,12 +229,12 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           _walletActionButton(
             'Nạp',
-                () => _showAmountDialog(context, isDeposit: true),
+            () => _showAmountDialog(context, isDeposit: true),
           ),
           const SizedBox(width: AppSpacing.sm),
           _walletActionButton(
             'Rút',
-                () => _showAmountDialog(context, isDeposit: false),
+            () => _showAmountDialog(context, isDeposit: false),
           ),
         ],
       ),
@@ -243,8 +245,8 @@ class _HomeScreenState extends State<HomeScreen>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md, vertical: 6),
+        padding:
+            const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
         decoration: BoxDecoration(
           color: AppColors.tealBg,
           borderRadius: BorderRadius.circular(AppRadius.full),
@@ -257,7 +259,6 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
-
 
   void _showAmountDialog(BuildContext context, {required bool isDeposit}) {
     final controller = TextEditingController();
@@ -283,7 +284,8 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal),
-            onPressed: () => _handleWalletSubmit(ctx, controller.text, isDeposit),
+            onPressed: () =>
+                _handleWalletSubmit(ctx, controller.text, isDeposit),
             child: Text(
               isDeposit ? 'Nạp' : 'Rút',
               style: const TextStyle(color: Colors.white),
@@ -311,7 +313,8 @@ class _HomeScreenState extends State<HomeScreen>
     if (!isDeposit && amount > _balance) {
       Navigator.pop(ctx);
       showSimpleNotification(
-        const Text('Số dư không đủ để rút', style: TextStyle(color: Colors.white)),
+        const Text('Số dư không đủ để rút',
+            style: TextStyle(color: Colors.white)),
         background: Colors.redAccent,
       );
       return;
@@ -350,11 +353,15 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               Expanded(
                   child: _buildFeatureCard(
-                      '🚌', 'Đặt Tuyến Xe', AppColors.tealBg, () {})),
+                      '🚌', 'Đặt Tuyến Xe', AppColors.tealBg, () {
+                widget.onNavigateTab?.call(1);
+              })),
               const SizedBox(width: AppSpacing.md),
               Expanded(
-                  child: _buildFeatureCard('🎫', 'Mua vé', AppColors.purpleBg,
-                          () {})),
+                  child:
+                      _buildFeatureCard('🎫', 'Mua vé', AppColors.purpleBg, () {
+                widget.onNavigateTab?.call(1);
+              })),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
@@ -386,8 +393,7 @@ class _HomeScreenState extends State<HomeScreen>
             Container(
               width: 72,
               height: 72,
-              decoration:
-              BoxDecoration(color: bgColor, shape: BoxShape.circle),
+              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
               child: Center(
                   child: Text(emoji, style: const TextStyle(fontSize: 36))),
             ),
@@ -415,8 +421,7 @@ class _HomeScreenState extends State<HomeScreen>
                     fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary)),
             const SizedBox(width: AppSpacing.sm),
-            Expanded(
-                child: Container(height: 1.5, color: AppColors.border)),
+            Expanded(child: Container(height: 1.5, color: AppColors.border)),
           ],
         ),
         const SizedBox(height: AppSpacing.md),
@@ -445,8 +450,7 @@ class _HomeScreenState extends State<HomeScreen>
                 child: Row(
                   children: [
                     Expanded(child: _buildEcoStat()),
-                    Container(
-                        width: 1.5, height: 40, color: AppColors.border),
+                    Container(width: 1.5, height: 40, color: AppColors.border),
                     Expanded(child: _buildTreeStat()),
                   ],
                 ),
