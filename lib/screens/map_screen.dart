@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
+import '../services/routing_service.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, required this.api});
@@ -19,6 +20,7 @@ class _MapScreenState extends State<MapScreen> {
   List<_BusStop> _dynamicStops = [];
   List<dynamic> _activeRoutes = [];
   Map<String, LatLng> _realBusPositions = {};
+  final Map<int, List<LatLng>> _roadPolylines = {};
 
   static const _busStops = [
     _BusStop(LatLng(10.0299, 105.7684), 'Depot - ĐH Cần Thơ (Khu II)', 'start',
@@ -54,9 +56,27 @@ class _MapScreenState extends State<MapScreen> {
       if (mounted) {
         _loadBackendLocations();
         _loadActiveRoutes();
+        _fetchRoadPolylines();
       }
     });
     _startGpsPolling();
+  }
+
+  Future<void> _fetchRoadPolylines() async {
+    for (int i = 1; i <= 3; i++) {
+      final waypoints = _effectiveStops
+          .where((s) => s.routes.contains(i))
+          .map((s) => s.pos)
+          .toList();
+      if (waypoints.length >= 2) {
+        final roadPts = await RoutingService().getDrivingRoute(waypoints);
+        if (mounted && roadPts.isNotEmpty) {
+          setState(() {
+            _roadPolylines[i] = roadPts;
+          });
+        }
+      }
+    }
   }
 
   Future<void> _loadActiveRoutes() async {
@@ -151,6 +171,10 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   List<LatLng> _getRouteCoords(int routeNum) {
+    if (_roadPolylines.containsKey(routeNum) &&
+        _roadPolylines[routeNum]!.isNotEmpty) {
+      return _roadPolylines[routeNum]!;
+    }
     return _effectiveStops
         .where((s) => s.routes.contains(routeNum))
         .map((s) => s.pos)
