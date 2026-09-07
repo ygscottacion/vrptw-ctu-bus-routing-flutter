@@ -45,6 +45,7 @@ class _DriverShellState extends State<DriverShell> {
       DriverMapTab(
         api: widget.api,
         initialRoute: _selectedRoute,
+        user: widget.user,
       ),
       DriverQrTab(
         api: widget.api,

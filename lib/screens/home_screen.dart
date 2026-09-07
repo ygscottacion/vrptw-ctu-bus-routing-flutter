@@ -1,9 +1,11 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:overlay_support/overlay_support.dart';
 import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onNavigateToBooking});
+
+  final VoidCallback? onNavigateToBooking;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -349,12 +351,22 @@ class _HomeScreenState extends State<HomeScreen>
           Row(
             children: [
               Expanded(
-                  child: _buildFeatureCard(
-                      '🚌', 'Đặt Tuyến Xe', AppColors.tealBg, () {})),
+                child: _buildFeatureCard(
+                  '🚌',
+                  'Đặt Tuyến Xe',
+                  AppColors.tealBg,
+                  () => widget.onNavigateToBooking?.call(),
+                ),
+              ),
               const SizedBox(width: AppSpacing.md),
               Expanded(
-                  child: _buildFeatureCard('🎫', 'Mua vé', AppColors.purpleBg,
-                          () {})),
+                child: _buildFeatureCard(
+                  '🎫',
+                  'Mua vé',
+                  AppColors.purpleBg,
+                  () => widget.onNavigateToBooking?.call(),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),

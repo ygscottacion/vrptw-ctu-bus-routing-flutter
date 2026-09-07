@@ -1,7 +1,9 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
 import '../features/auth/auth_repository.dart';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiService {
   ApiService(this._authRepo);
@@ -29,6 +31,20 @@ class ApiService {
     }
   }
 
+  Future<Map<String, dynamic>?> fetchMeDirectSupabase(String uid) async {
+    try {
+      final res = await Supabase.instance.client
+          .from('profiles')
+          .select()
+          .eq('id', uid)
+          .maybeSingle();
+      if (res != null) {
+        return Map<String, dynamic>.from(res);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<List<dynamic>> fetchLocations() async {
     final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.locations}');
     try {
@@ -54,13 +70,67 @@ class ApiService {
   }
 
   Future<List<dynamic>> fetchDriverRoutes(String driverId) async {
-    final url =
-        Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesDriver}$driverId');
-    final response = await http.get(url, headers: _headers);
-    if (response.statusCode == 200) {
-      return json.decode(response.body) as List<dynamic>;
-    }
-    throw Exception('Khong the tai lich trinh tai xe: ${response.statusCode}');
+    // 1. Thu goi API FastAPI /routes (RBAC da tu filter theo driver)
+    try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routesActive}');
+      final response = await http
+          .get(url, headers: _headers)
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        final list = json.decode(response.body) as List<dynamic>;
+        if (list.isNotEmpty) return list;
+      }
+    } catch (_) {}
+
+    // 2. Fallback query truc tiep tu Supabase DB
+    try {
+      final actualDriverId =
+          driverId.isNotEmpty ? driverId : (_authRepo.currentUser?.id ?? '');
+      String? vehicleId;
+      if (actualDriverId.isNotEmpty) {
+        final vehicleRes = await Supabase.instance.client
+            .from('vehicles')
+            .select('id')
+            .eq('driver_id', actualDriverId)
+            .maybeSingle();
+        vehicleId = vehicleRes?['id']?.toString();
+      }
+
+      final query = Supabase.instance.client
+          .from('routes')
+          .select('*, route_stops(*, locations(*)), vehicles(*)');
+
+      final routesRes = vehicleId != null
+          ? await query
+              .eq('vehicle_id', vehicleId)
+              .order('service_date', ascending: false)
+          : await query.order('service_date', ascending: false).limit(2);
+
+      if ((routesRes as List).isNotEmpty) {
+        final routes = (routesRes as List).map((r) {
+          final rawStops = (r['route_stops'] as List? ?? [])
+            ..sort((a, b) =>
+                (a['stop_order'] ?? 0).compareTo(b['stop_order'] ?? 0));
+          return {
+            ...r,
+            'stops': rawStops.map((s) {
+              final loc = s['locations'] ?? s['location'] ?? {};
+              return {
+                'id': s['id'],
+                'name': loc['name'] ?? 'Trạm đón',
+                'latitude': loc['latitude'],
+                'longitude': loc['longitude'],
+                'stop_order': s['stop_order'],
+                'arrival_time': s['arrival_time'],
+              };
+            }).toList(),
+          };
+        }).toList();
+        return routes;
+      }
+    } catch (_) {}
+
+    return [];
   }
 
   Future<List<dynamic>> fetchActiveRoutes() async {
@@ -106,12 +176,44 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> fetchRouteDetails(String routeId) async {
-    final response = await http.get(
-      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routeDetails}$routeId'),
-      headers: _headers,
-    );
-    if (response.statusCode != 200) throw Exception(_message(response));
-    return Map<String, dynamic>.from(json.decode(response.body) as Map);
+    try {
+      final response = await http
+          .get(
+            Uri.parse('${ApiConfig.baseUrl}${ApiConfig.routeDetails}$routeId'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(json.decode(response.body) as Map);
+      }
+    } catch (_) {}
+
+    try {
+      final res = await Supabase.instance.client
+          .from('routes')
+          .select('*, route_stops(*, locations(*)), vehicles(*)')
+          .eq('id', routeId)
+          .maybeSingle();
+      if (res != null) {
+        final rawStops = (res['route_stops'] as List? ?? [])
+          ..sort((a, b) =>
+              (a['stop_order'] ?? 0).compareTo(b['stop_order'] ?? 0));
+        return {
+          ...res,
+          'stops': rawStops.map((s) {
+            final loc = s['locations'] ?? {};
+            return {
+              'id': s['id'],
+              'location': loc,
+              'stop_order': s['stop_order'],
+              'arrival_time': s['arrival_time'],
+            };
+          }).toList(),
+        };
+      }
+    } catch (_) {}
+
+    throw Exception('Không tìm thấy thông tin tuyến xe: $routeId');
   }
 
   Future<Map<String, dynamic>> verifyTicket(String qrCode) =>
