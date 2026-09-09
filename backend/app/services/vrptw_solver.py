@@ -7,6 +7,13 @@ from app.services.student_routing.helpers.distance_matrix import StaticDistanceM
 from app.services.student_routing import config as routing_config
 
 
+class RouteSolverError(Exception):
+    def __init__(self, error_code: str, message: str):
+        self.error_code = error_code
+        self.message = message
+        super().__init__(f"[{error_code}] {message}")
+
+
 class VRPTWSolverService:
     """
     Adapter Service tổng hợp VRPTW Solver Pipeline:
@@ -85,6 +92,12 @@ class VRPTWSolverService:
             options=options
         )
 
+        if response.status and response.status.upper() == "ERROR":
+            raise RouteSolverError(
+                error_code=response.error_code or "SOLVER_ERROR",
+                message=response.error_message or "Solver returned an error."
+            )
+
         final_routes = []
         if response.data and response.data.routes:
             for route_obj in response.data.routes:
@@ -108,3 +121,4 @@ class VRPTWSolverService:
                 })
 
         return final_routes
+
