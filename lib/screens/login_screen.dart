@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../features/auth/auth_repository.dart';
@@ -6,7 +7,6 @@ import '../state/app_state.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
-
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -17,10 +17,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _errorText;
-
   // Custom color matching the design
   final Color _primaryColor = const Color(0xFF4A9CB9);
-
   Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -28,14 +26,11 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _errorText = 'Vui lòng nhập đầy đủ email và mật khẩu.');
       return;
     }
-
     setState(() {
       _isLoading = true;
       _errorText = null;
     });
-
     final appState = context.read<AppState>();
-
     try {
       await appState.authRepo.signInWithEmailPassword(email, password);
       await appState.onLoggedIn(); // goi /me lay role that
@@ -100,6 +95,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: _primaryColor,
                             fontWeight: FontWeight.bold,
                           ),
+                          recognizer: TapGestureRecognizer()
+                            ..onTap = () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text(
+                                        'Tính năng Đăng ký đang phát triển')),
+                              );
+                            },
                         ),
                       ],
                     ),
@@ -187,12 +190,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 16),
 
                   // Quên mật khẩu?
-                  Text(
-                    'Quên mật khẩu?',
-                    style: TextStyle(
-                      color: _primaryColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                  GestureDetector(
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text(
+                                'Tính năng Quên mật khẩu đang phát triển')),
+                      );
+                    },
+                    child: Text(
+                      'Quên mật khẩu?',
+                      style: TextStyle(
+                        color: _primaryColor,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
 
@@ -249,12 +261,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Tiếng Việt',
-                        style: TextStyle(
-                          color: _primaryColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
+                      GestureDetector(
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text(
+                                    'Tính năng Đổi ngôn ngữ đang phát triển')),
+                          );
+                        },
+                        child: Text(
+                          'Tiếng Việt',
+                          style: TextStyle(
+                            color: _primaryColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
                         ),
                       ),
                     ],
