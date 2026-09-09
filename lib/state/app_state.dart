@@ -45,6 +45,18 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // Backend chua san sang hoac loi mang - fallback ben duoi.
     }
+
+    try {
+      final uid = authRepo.currentUser?.id;
+      if (uid != null) {
+        final profileDb = await api.fetchMeDirectSupabase(uid);
+        if (profileDb != null) {
+          _user = profileDb;
+          return;
+        }
+      }
+    } catch (_) {}
+
     // Fallback: van cho vao app voi role mac dinh passenger, tranh ket cung o loading.
     _user = {'email': authRepo.currentUser?.email, 'role': 'passenger'};
   }

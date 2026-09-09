@@ -4,12 +4,20 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../../services/api_service.dart';
 import '../../services/gps_service.dart';
+import '../../services/routing_service.dart';
 import '../../theme/app_theme.dart';
 
 class DriverMapTab extends StatefulWidget {
-  const DriverMapTab({super.key, required this.api, this.initialRoute});
+  const DriverMapTab({
+    super.key,
+    required this.api,
+    this.initialRoute,
+    this.user,
+  });
   final ApiService api;
   final Map<String, dynamic>? initialRoute;
+  final Map<String, dynamic>? user;
+
   @override
   State<DriverMapTab> createState() => _DriverMapTabState();
 }
@@ -20,6 +28,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   late TabController _tabs;
   Map<String, dynamic>? _route;
   List<_Stop> _stops = [];
+  List<LatLng> _roadPolylinePoints = [];
   bool _loading = true, _busy = false;
   String? _error;
   String? get _id => _route?['id']?.toString();
@@ -44,47 +53,130 @@ class _DriverMapTabState extends State<DriverMapTab>
   }
 
   @override
+  void didUpdateWidget(covariant DriverMapTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialRoute != oldWidget.initialRoute && widget.initialRoute != null) {
+      _route = widget.initialRoute;
+      _load();
+    }
+  }
+
+  @override
   void dispose() {
     _tabs.dispose();
     _map.dispose();
     super.dispose();
   }
 
+  List<_Stop> _parseStops(Map<String, dynamic> route) {
+    final rawStopsList = (route['stops'] as List<dynamic>? ??
+        route['route_stops'] as List<dynamic>? ??
+        []);
+    final stops = rawStopsList.map((raw) {
+      final item = Map<String, dynamic>.from(raw as Map);
+      final loc = Map<String, dynamic>.from(item['location'] as Map? ??
+          item['locations'] as Map? ??
+          item);
+      final name = loc['name']?.toString() ??
+          item['name']?.toString() ??
+          'Trạm ${item['stop_order'] ?? ''}';
+      final lat = (loc['latitude'] as num?)?.toDouble() ??
+          (item['latitude'] as num?)?.toDouble() ??
+          10.0302;
+      final lng = (loc['longitude'] as num?)?.toDouble() ??
+          (item['longitude'] as num?)?.toDouble() ??
+          105.7721;
+      final date = DateTime.tryParse(item['arrival_time']?.toString() ?? '')
+          ?.toLocal();
+      return _Stop(
+        name,
+        LatLng(lat, lng),
+        date == null
+            ? 'Đang cập nhật'
+            : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
+        (item['stop_order'] as num?)?.toInt() ?? 0,
+      );
+    }).toList()
+      ..sort((a, b) => a.order.compareTo(b.order));
+    return stops;
+  }
+
+  Future<void> _fetchRoadPolyline(List<_Stop> stops) async {
+    if (stops.length < 2) return;
+    try {
+      final waypoints = stops.map((s) => s.point).toList();
+      final roadPoints = await RoutingService().getDrivingRoute(waypoints);
+      if (mounted && roadPoints.isNotEmpty) {
+        setState(() {
+          _roadPolylinePoints = roadPoints;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _load() async {
-    final routeId = _id;
+    if (mounted) setState(() { _loading = true; _error = null; });
+
+    // 1. Nếu đã có dữ liệu tuyến hiện tại, hiển thị ngay lập tức
+    if (_route != null) {
+      final initialStops = _parseStops(_route!);
+      if (initialStops.isNotEmpty && mounted) {
+        setState(() {
+          _stops = initialStops;
+          _loading = false;
+        });
+        _fetchRoadPolyline(initialStops);
+      }
+    }
+
+    String? routeId = _id;
     if (routeId == null || routeId.isEmpty) {
-      setState(() {
-        _loading = false;
-        _error = 'Chưa có tuyến được phân công.';
-      });
+      try {
+        final driverId = widget.user?['id']?.toString() ?? '';
+        final routes = await widget.api.fetchDriverRoutes(driverId);
+        if (routes.isNotEmpty) {
+          _route = Map<String, dynamic>.from(routes.first as Map);
+          routeId = _id;
+          final stops = _parseStops(_route!);
+          if (stops.isNotEmpty && mounted) {
+            setState(() {
+              _stops = stops;
+              _loading = false;
+            });
+            _fetchRoadPolyline(stops);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (routeId == null || routeId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Chưa có tuyến được phân công.';
+        });
+      }
       return;
     }
+
     try {
       final route = await widget.api.fetchRouteDetails(routeId);
-      final stops = (route['stops'] as List<dynamic>? ?? []).map((raw) {
-        final item = Map<String, dynamic>.from(raw as Map);
-        final loc = Map<String, dynamic>.from(item['location'] as Map? ?? {});
-        final date = DateTime.tryParse(item['arrival_time']?.toString() ?? '')
-            ?.toLocal();
-        return _Stop(
-          loc['name']?.toString() ?? 'Trạm ${item['stop_order']}',
-          LatLng((loc['latitude'] as num?)?.toDouble() ?? 10.0302,
-              (loc['longitude'] as num?)?.toDouble() ?? 105.7721),
-          date == null
-              ? 'Đang cập nhật'
-              : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
-          (item['stop_order'] as num?)?.toInt() ?? 0,
-        );
-      }).toList()
-        ..sort((a, b) => a.order.compareTo(b.order));
-      if (mounted)
+      final stops = _parseStops(route);
+      if (mounted) {
         setState(() {
           _route = route;
-          _stops = stops;
+          _stops = stops.isNotEmpty ? stops : _stops;
           _error = null;
+          _loading = false;
         });
+        if (_stops.isNotEmpty) {
+          _fetchRoadPolyline(_stops);
+        }
+      }
     } catch (e) {
-      if (mounted) setState(() => _error = 'Không thể tải tuyến: $e');
+      if (mounted && _stops.isEmpty) {
+        setState(() => _error = 'Không thể tải tuyến: $e');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -205,10 +297,22 @@ class _DriverMapTabState extends State<DriverMapTab>
                             userAgentPackageName: 'com.ctu.myctubus'),
                         if (_stops.length > 1)
                           PolylineLayer(polylines: [
+                            // Viền ngoài làm nổi bật tuyến đường
                             Polyline(
-                                points: _stops.map((s) => s.point).toList(),
-                                color: const Color(0xFFFF5D3D),
-                                strokeWidth: 4)
+                              points: _roadPolylinePoints.isNotEmpty
+                                  ? _roadPolylinePoints
+                                  : _stops.map((s) => s.point).toList(),
+                              color: Colors.white,
+                              strokeWidth: 7,
+                            ),
+                            // Tuyến đường giao thông thực tế màu cam nổi bật
+                            Polyline(
+                              points: _roadPolylinePoints.isNotEmpty
+                                  ? _roadPolylinePoints
+                                  : _stops.map((s) => s.point).toList(),
+                              color: const Color(0xFFFF5D3D),
+                              strokeWidth: 4.5,
+                            ),
                           ]),
                          StreamBuilder<Position>(
                            stream: GpsService().positionStream,

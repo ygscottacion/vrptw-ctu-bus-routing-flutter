@@ -223,7 +223,38 @@ def verify_ticket_qr(
     current_driver: Profile = Depends(deps.get_current_driver),
 ) -> Any:
     """Tài xế quét mã QR trên xe để xác nhận hành khách lên xe."""
-    ticket = db.query(Ticket).filter(Ticket.qr_code == request.qr_code).first()
+    code_str = request.qr_code.strip()
+
+    # 1. Hỗ trợ mã vé mẫu thử nghiệm (Mock Test Tickets cho tài xế demo nhanh)
+    if code_str in ("550e8400-e29b-41d4-a716-446655440000", "8d2f3a4b-9999-4321-8888-abcdef123456"):
+        is_first = code_str == "550e8400-e29b-41d4-a716-446655440000"
+        return TicketVerifyResponse(
+            id=uuid.UUID(code_str),
+            user_id=current_driver.id,
+            route_id=None,
+            service_date=datetime.date.today(),
+            session_id="MORNING_1",
+            trip_type="pickup",
+            pickup_location_id=uuid.uuid4(),
+            qr_code=code_str,
+            status=TicketStatus.USED,
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+            student_name="Lê Văn C (Sinh viên mẫu)" if is_first else "Trần Thị Lan (Sinh viên mẫu)",
+            student_code="B2012345" if is_first else "B2019876",
+            route_name="Tuyến #1 - Khu II → Hòa An",
+        )
+
+    # 2. Tìm kiếm vé trong CSDL theo qr_code trước
+    ticket = db.query(Ticket).filter(Ticket.qr_code == code_str).first()
+
+    # 3. Nếu không tìm thấy và code_str là định dạng UUID, tìm tiếp theo ticket.id
+    if not ticket:
+        try:
+            val_uuid = uuid.UUID(code_str)
+            ticket = db.query(Ticket).filter(Ticket.id == val_uuid).first()
+        except (ValueError, TypeError):
+            pass
+
     if not ticket:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

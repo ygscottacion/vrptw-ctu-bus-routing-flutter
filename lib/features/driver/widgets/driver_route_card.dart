@@ -119,7 +119,7 @@ class DriverRouteCard extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          'Tuyến #${nextRoute!['id']}',
+                          'Tuyến #CT-${nextRoute!['id'].toString().length > 5 ? nextRoute!['id'].toString().substring(0, 5).toUpperCase() : nextRoute!['id']}',
                           style: const TextStyle(
                             color: AppColors.teal,
                             fontSize: 20,

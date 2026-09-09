@@ -54,6 +54,16 @@
 | TC_DL_04 | Sinh tuyến sau 22:00 | 1. Scheduler chạy sinh tuyến sau 22:00 (22:01) | Time = 22:01:00 (ICT) | Sinh tuyến thành công, các vé RESERVED chuyển sang ASSIGNED. | [x] PASS | `backend/tests/test_day7_failure_retry_deadline.py` |
 | TC_JOB_01 | Tự phục hồi Job FAILED (Retry Recovery) | 1. Job sinh tuyến ban đầu FAILED do thiếu vé<br>2. Bổ sung vé hợp lệ và retry lại | RouteJob đã FAILED | Job chuyển từ FAILED -> RUNNING -> SUCCEEDED, xóa error_message. | [x] PASS | `backend/tests/test_day7_failure_retry_deadline.py` |
 
+## 7. Flow Field Test Thực địa (Khuôn viên ĐHCT) & Full E2E Loop
+
+| ID | Tính năng | Các bước thực hiện (Steps) | Dữ liệu Test (Input) | Kết quả mong đợi (Expected) | Trạng thái | Nơi lưu Evidence |
+|---|---|---|---|---|---|---|
+| TC_FLD_01 | Bắt sóng GPS thực tế ngoài trời | 1. Di chuyển xe buýt dọc trục đường 3/2 & KTX A<br>2. Kiểm tra độ chính xác | GPS thực tế thiết bị | Tọa độ chuẩn xác (Sai số < 10m), heading và speed phản ánh đúng tốc độ xe. | [x] PASS | `docs/report/report_T9_Loi.md` |
+| TC_FLD_02 | Phục hồi GPS khi mất sóng tạm thời | 1. Đi vào khu vực tầng trệt / bóng râm lớn<br>2. Đi ra ngoài vùng trời thoáng | Vùng mất GPS -> Có lại GPS | App không crash, tự động tiếp tục gửi vị trí ngay khi GPS khả dụng trở lại. | [x] PASS | `docs/report/report_T9_Loi.md` |
+| TC_FLD_03 | Quét QR Camera dưới ánh sáng tự nhiên | 1. Đưa camera quét mã QR sinh viên dưới nắng / bóng râm | Camera thiết bị Android | Tốc độ nhận diện QR tức thì (< 1 giây), modal xác nhận hiện nhanh và rõ nét. | [x] PASS | `docs/report/report_T9_Loi.md` |
+| TC_E2E_01 | Full Closed-Loop: Đặt vé -> Sinh tuyến -> Check-in -> Kết ca | 1. SV đặt vé trước 22:00<br>2. Scheduler sinh tuyến gán xe<br>3. Tài xế nhận tuyến, phát GPS<br>4. SV lên xe quét QR check-in<br>5. Tài xế kết thúc ca | 5 SV, 2 Tài xế, 2 Xe buýt | Toàn bộ vòng đời dữ liệu khép kín, trạng thái vé chuyển `CHECKED_IN`, kết thúc ca an toàn. | [x] PASS | `docs/report/report_T9_Loi.md` |
+
 ---
-**Tổng kết E2E Vòng 2:** 17/17 Test cases ĐẠT (PASS). Hệ thống sẵn sàng bước vào giai đoạn Release Staging (T8).
+**Tổng kết Nghiệm thu E2E Vòng 2 (Ngày 9):** 21/21 Test cases ĐẠT (PASS 100%). Hệ thống đã đóng băng toàn bộ tính năng và sẵn sàng cho Release Staging / Nghiệm thu Đồ án Ngày 10.
+
 
