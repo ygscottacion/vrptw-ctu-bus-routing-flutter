@@ -152,6 +152,10 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
             if not tickets:
                 raise RouteStopValidationError(job_id_str, "No RESERVED tickets found.", "DATABASE_WRITE_FAILED")
 
+            from app.services.student_routing import config as routing_config
+            if len(tickets) > routing_config.MAX_BOOKINGS_PER_JOB:
+                raise RouteStopValidationError(job_id_str, f"Ticket count ({len(tickets)}) exceeds MVP limit ({routing_config.MAX_BOOKINGS_PER_JOB}).", "MVP_DATA_LIMIT_EXCEEDED")
+
             tickets_by_location: Dict[str, List[Ticket]] = {}
             for ticket in tickets:
                 tickets_by_location.setdefault(str(ticket.pickup_location_id), []).append(ticket)
@@ -174,12 +178,17 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                 session_id, trip_type = SessionId(job.session_id), TripType(job.trip_type.upper())
             except (TypeError, ValueError) as exc:
                 raise ValueError(f"Invalid job session/trip type: {job.session_id}/{job.trip_type}") from exc
-            solved_routes = VRPTWSolverService().solve(
-                depot={"id": "depot", "name": depot.name, "latitude": depot.latitude, "longitude": depot.longitude},
-                locations=location_dicts,
-                vehicles=[{"id": str(vehicle.id), "capacity": vehicle.capacity, "license_plate": vehicle.license_plate} for vehicle in vehicles],
-                session_id=session_id, trip_type=trip_type,
-            )
+            try:
+                solved_routes = VRPTWSolverService().solve(
+                    depot={"id": "depot", "name": depot.name, "latitude": depot.latitude, "longitude": depot.longitude},
+                    locations=location_dicts,
+                    vehicles=[{"id": str(vehicle.id), "capacity": vehicle.capacity, "license_plate": vehicle.license_plate} for vehicle in vehicles],
+                    session_id=session_id, trip_type=trip_type,
+                )
+            except Exception as exc:
+                if hasattr(exc, "error_code") and hasattr(exc, "message"):
+                    raise RouteStopValidationError(job_id_str, exc.message, exc.error_code)
+                raise
             if not solved_routes:
                 raise RouteStopValidationError(job_id_str, "Solver found no feasible route.")
 

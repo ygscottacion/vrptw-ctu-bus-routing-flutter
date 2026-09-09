@@ -99,7 +99,7 @@ class _StudentShellState extends State<StudentShell> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      HomeScreen(onNavigateToBooking: () => setState(() => _index = 1)),
+      HomeScreen(onNavigateTab: (i) => setState(() => _index = i)),
       TicketScreen(api: widget.api),
       const NotificationScreen(),
       const SettingsScreen(),

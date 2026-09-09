@@ -50,7 +50,7 @@ class StudentRoutingService:
     ) -> OptimizationResponse:
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        # ── 1. Validate Basic Inputs ──────────────────────────────────────────
+        # ── 1. Validate Basic Inputs & MVP Data Bounds ───────────────────────
         if not vehicles:
             return self.response_formatter.format_error(
                 options.session_id, options.trip_type, "NO_VEHICLE_AVAILABLE",
@@ -63,6 +63,18 @@ class StudentRoutingService:
                 "Danh sách trạm đón không được để trống"
             )
 
+        if len(stations) > config.MAX_STATIONS_PER_JOB:
+            return self.response_formatter.format_error(
+                options.session_id, options.trip_type, "MVP_DATA_LIMIT_EXCEEDED",
+                f"Số trạm đón ({len(stations)}) vượt quá giới hạn MVP ({config.MAX_STATIONS_PER_JOB})"
+            )
+
+        if len(vehicles) > config.MAX_VEHICLES_PER_JOB:
+            return self.response_formatter.format_error(
+                options.session_id, options.trip_type, "MVP_DATA_LIMIT_EXCEEDED",
+                f"Số lượng xe ({len(vehicles)}) vượt quá giới hạn MVP ({config.MAX_VEHICLES_PER_JOB})"
+            )
+
         school_loc = {"lat": school_config.location.lat, "lng": school_config.location.lng}
 
         # Total requested students
@@ -70,6 +82,12 @@ class StudentRoutingService:
             st.pickup_student_count if options.trip_type == "PICKUP" else st.dropoff_student_count
             for st in stations
         )
+
+        if total_students_requested > config.MAX_BOOKINGS_PER_JOB:
+            return self.response_formatter.format_error(
+                options.session_id, options.trip_type, "MVP_DATA_LIMIT_EXCEEDED",
+                f"Tổng số SV ({total_students_requested}) vượt quá giới hạn MVP ({config.MAX_BOOKINGS_PER_JOB})"
+            )
 
         total_capacity = sum(v.capacity for v in vehicles)
         if total_students_requested > total_capacity:
@@ -166,16 +184,23 @@ class StudentRoutingService:
 
         vehicle_capacities = [v.capacity for v in vehicles]
 
-        # ── 5. Route Optimization via Tabu Search ──────────────────────────────
-        optimized_routes, best_eval = self.tabu_optimizer.optimize(
-            initial_routes=initial_routes,
-            depot=depot_dict,
-            distance_matrix=dist_matrix,
-            travel_time_matrix=ttime_matrix,
-            point_index_map=point_index_map,
-            vehicle_capacities=vehicle_capacities,
-            departure_time_mins=departure_mins
-        )
+        # ── 5. Route Optimization via Tabu Search (With Fallback to Sweep) ───
+        try:
+            optimized_routes, best_eval = self.tabu_optimizer.optimize(
+                initial_routes=initial_routes,
+                depot=depot_dict,
+                distance_matrix=dist_matrix,
+                travel_time_matrix=ttime_matrix,
+                point_index_map=point_index_map,
+                vehicle_capacities=vehicle_capacities,
+                departure_time_mins=departure_mins
+            )
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Tabu Search optimization failed: {exc}. Falling back to Sweep initial routes."
+            )
+            optimized_routes = initial_routes
 
         # ── 6. Response Formatting ─────────────────────────────────────────────
         return self.response_formatter.format_success(

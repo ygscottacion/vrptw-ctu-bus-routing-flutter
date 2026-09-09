@@ -1,6 +1,6 @@
 """
 backend/scripts/seed_supabase.py
-Chạy: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python -m scripts.seed_supabase
+Chạy: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... SEED_TEST_PASSWORD=... python -m scripts.seed_supabase
 KHÔNG commit service-role key vào repo. Đọc từ biến môi trường / secret manager.
 """
 import os
@@ -13,7 +13,19 @@ client = create_client(SUPABASE_URL, SERVICE_ROLE_KEY)
 
 STUDENTS = [f"student{i}@test.example.com" for i in range(1, 6)]   # 5 student
 DRIVERS  = [f"driver{i}@test.example.com" for i in range(1, 3)]    # 2 driver
-TEST_PASSWORD = os.environ["SEED_TEST_PASSWORD"]  # không hardcode
+
+# Mật khẩu dùng chung cho toàn bộ 7 tài khoản test (5 student + 2 driver).
+# Giá trị THẬT đang dùng trên staging hiện tại: "TestPassword123!"
+# (Xác nhận bằng cách test login qua Supabase Auth API — script chỉ TẠO MỚI
+# nếu email chưa tồn tại (find_or_create_user), không update password cho
+# user đã có, nên mọi lần chạy lại với SEED_TEST_PASSWORD khác giá trị ban
+# đầu đều KHÔNG có tác dụng đổi password.)
+#
+# KHÔNG hardcode giá trị thật ở đây — đọc từ biến môi trường SEED_TEST_PASSWORD
+# khi chạy script. Giá trị thật lưu trong 1Password/Bitwarden của team,
+# không dán vào chat/commit/log. Muốn đổi mật khẩu cho tài khoản đã tồn tại
+# cần thêm logic gọi update_user_by_id — script hiện tại chưa hỗ trợ.
+TEST_PASSWORD = os.environ["SEED_TEST_PASSWORD"]
 
 def find_or_create_user(email: str) -> str:
     """Tìm theo email trước, không tạo trùng khi chạy lại lần 2."""
