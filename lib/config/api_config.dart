@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 class ApiConfig {
@@ -13,20 +12,22 @@ class ApiConfig {
     if (fromEnv.isNotEmpty) return fromEnv;
 
     if (kIsWeb) return 'http://localhost:8000/api/v1';
-    if (Platform.isAndroid) return 'http://10.0.2.2:8000/api/v1';
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8000/api/v1';
+    }
     return 'http://localhost:8000/api/v1';
   }
 
-  /// Cấu hình Supabase — bắt buộc truyền qua --dart-define, không có giá trị mặc định
-  /// để tránh app chạy "âm thầm sai" khi quên cấu hình.
+  /// Cấu hình Supabase Staging
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: '',
+    defaultValue: 'https://szybskwlctbynbkqnllv.supabase.co',
   );
 
   static const String supabaseAnonKey = String.fromEnvironment(
     'SUPABASE_ANON_KEY',
-    defaultValue: '',
+    defaultValue:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6eWJza3dsY3RieW5ia3FubGx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4MDU5NDEsImV4cCI6MjEwMzM4MTk0MX0.3HjI2OoPAZ5pfapxtdfgajJxD7F_9OsbjWnOja9v8pI',
   );
 
   /// Gọi ở đầu main() để báo lỗi rõ ràng nếu quên truyền dart-define,

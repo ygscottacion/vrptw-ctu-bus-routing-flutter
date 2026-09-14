@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
 
+    # Google Routes API Settings
+    GOOGLE_ROUTES_API_KEY: str = ""
+
+
     @property
     def SUPABASE_JWKS_URL(self) -> str:
         if self.SUPABASE_URL:
