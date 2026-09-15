@@ -23,3 +23,8 @@ from app.schemas.route import (
     RouteResponse,
     RouteGenerateRequest,
 )
+from app.schemas.route_matrix_cache import (
+    MatrixPointItem,
+    RouteMatrixCacheCreate,
+    RouteMatrixCacheResponse,
+)
