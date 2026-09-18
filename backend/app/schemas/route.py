@@ -62,3 +62,15 @@ class RouteJobResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PolylineResponse(BaseModel):
+    encoded_polyline: str = Field("", description="Google/Goong Encoded Polyline string")
+    distance_km: float = Field(..., description="Tổng quãng đường tính bằng km")
+    duration_minutes: float = Field(..., description="Tổng thời gian di chuyển tính bằng phút")
+    points: List[List[float]] = Field(default_factory=list, description="Danh sách các cặp tọa độ [[lat, lng], ...]")
+    cached: bool = Field(False, description="Xác định kết quả có được trả về từ cache 24h hay không")
+    cached_at: Optional[str] = Field(None, description="Thời gian lưu cache (ISO 8601 UTC)")
+
+    model_config = ConfigDict(from_attributes=True)
+
