@@ -33,7 +33,28 @@ Hệ thống phân tuyến thường được kích hoạt tự động theo l�
 - `trip_type`: Loại chuyến (`pickup` - đón đi học, `dropoff` - trả về nhà).
 - `depot_location_id` *(Optional)*: UUID của điểm tập kết/trường ĐH Cần Thơ (nếu không truyền sẽ dùng Depot mặc định).
 
+### 1.4 Cấu Hình Biến Môi Trường Goong Maps & Secret Management
+
+Hệ thống định tuyến sử dụng dịch vụ **Goong Maps API** cho việc tính ma trận khoảng cách/thời gian và dẫn đường (Polyline).
+
+#### Danh Sách Biến Môi Trường Backend:
+| Biến Môi Trường | Mô tả | Môi Trường Staging/Prod |
+| :--- | :--- | :--- |
+| `GOONG_API_KEY` | Key truy cập REST API (Direction, Distance Matrix). **Bảo mật phía Server.** | Lấy từ Goong Console -> Rest API Key |
+| `GOONG_MAPTILES_KEY` | Key tải Tile bản đồ cho client Flutter / Web. | Lấy từ Goong Console -> Map Tiles Key |
+| `GOONG_DIRECTION_BASE_URL` | Endpoint base cho Direction API. | `https://rsapi.goong.io/Direction` |
+| `GOONG_DISTANCE_MATRIX_BASE_URL` | Endpoint base cho Distance Matrix API. | `https://rsapi.goong.io/DistanceMatrix` |
+| `ENVIRONMENT` | Môi trường triển khai (`development` / `production`). | `production` |
+
+#### Quy Tắc Quản Lý Secrets:
+1. **Không commit `GOONG_API_KEY` thực tế lên Git**: `GOONG_API_KEY` chỉ được lưu trong file `.env` (đã khai báo trong `.gitignore`) hoặc lưu trên Secret Manager (AWS Secrets Manager, Vault, Render Secrets).
+2. **Fail-Fast khi thiếu Key ở Production**: Nếu hệ thống khởi động ở môi trường `production` mà thiếu `GOONG_API_KEY`, ứng dụng sẽ dùng cơ chế fail-fast (`ValueError`) và ngừng khởi động để tránh chạy thiếu thông tin cấu hình quan trọng.
+3. **Fallback ở Development**: Ở môi trường `development`, nếu thiếu `GOONG_API_KEY`, hệ thống ghi log cảnh báo (`WARNING`) và tự động fallback sang `StaticDistanceMatrixProvider` (Haversine).
+
+---
+
 ### 1.3 Lệnh Mẫu (cURL & PowerShell)
+
 
 #### cURL (Linux / macOS / Git Bash)
 ```bash
@@ -125,7 +146,50 @@ Dựa trên kết quả thực nghiệm T9 và các thông số thiết kế MVP
 
 ---
 
-## 5. Liên Hệ Hỗ Trợ Sự Cố (Incident Support)
+## 6. Hướng Dẫn Vận Hành Monitoring, Structured JSON Log & Cảnh Báo Goong Maps
+
+Hệ thống định tuyến ghi nhận thông số (metrics) và log có cấu trúc cho mỗi lần gọi API Goong Maps (`direction` và `distance_matrix`).
+
+### 6.1 Đọc Metrics & Dashboard
+Hệ thống theo dõi tự động thu thập các chỉ số sau:
+- **`daily_quota_used` / `daily_quota_percent`**: Số lượng request Goong đã gọi trong ngày và tỷ lệ % so với hạn mức (mặc định 10.000 req/ngày).
+- **`cache_hit_rate_percent`**: Tỷ lệ % trả kết quả ngay từ cache 24h đối với polyline (`GET /api/v1/routes/polyline`).
+- **`error_rate_percent`**: Tỷ lệ % cuộc gọi API gặp lỗi (401, 403, 429, 5xx, timeout).
+- **`fallback_to_static_count`**: Số lần chuyển sang `StaticDistanceMatrixProvider` do Goong lỗi/timeout.
+
+### 6.2 Danh Sách Cảnh Báo (Alerts) & Bước Xử Lý Quy Chuẩn
+
+| Cảnh báo (`ALERT_CODE`) | Ngưỡng kích hoạt | Ý nghĩa | Bước xử lý |
+| :--- | :--- | :--- | :--- |
+| `[QUOTA_NEAR_LIMIT]` | Quota ngày $\ge 80\%$ (ví dụ $\ge 8.000$ reqs) | Lượng request gọi tới Goong sắp chạm hạn mức gói đăng ký. | 1. Kiểm tra trên Goong Dashboard.<br>2. Liên hệ quản trị viên nâng cấp gói API Goong.<br>3. Kiểm tra xem có client spam API không. |
+| `[FALLBACK_TRIGGERED]` | Tự động chuyển sang Static Matrix | Goong API bị timeout (>3s), rate limit (429), hoặc lỗi mạng. | 1. Tra cứu log server theo timestamp.<br>2. Kiểm tra trang trạng thái dịch vụ Goong (Downtime).<br>3. Kiểm tra lại kết nối mạng server backend. |
+| `[401_403_AUTH_FAIL]` | HTTP 401 hoặc 403 từ Goong | API Key bị sai, hết hạn hoặc bị revoke từ Goong Console. | 1. Kiểm tra lại biến `GOONG_API_KEY` trong file `.env` hoặc Secret Manager.<br>2. Đăng nhập Goong Console để verify key status.<br>3. Cập nhật key mới và reload service. |
+| `[ETA_ANOMALY]` | Vận tốc suy ra $>150$ km/h hoặc $<2$ km/h, hoặc duration $\le 0$ | Thời gian di chuyển ETA trả về từ Goong bất thường. | 1. Tra cứu `origin_destination` trong log cảnh báo.<br>2. Kiểm tra tọa độ trạm đón sinh viên có bị sai lệch lớn không (ví dụ nhầm lat/lng). |
+
+### 6.3 Tra Cứu Log Structured JSON Cho Một Request Cụ Thể
+
+Mỗi cuộc gọi Goong API được log dưới dạng JSON dòng đơn (single-line JSON):
+```json
+{"timestamp": "2026-09-18T12:05:00Z", "service": "goong_maps", "endpoint": "direction", "origin_destination": "origin=(10.03,105.77),dest=(10.04,105.78)", "latency_ms": 142.5, "status_code": 200, "cache_hit": false, "error": null, "daily_quota_used": 154, "daily_quota_percent": 1.54}
+```
+
+#### Lệnh Tra Cứu Log Qua CLI (Linux / PowerShell):
+- **Tìm các log lỗi Goong**:
+  ```bash
+  grep '"service":"goong_maps"' backend.log | grep -v '"status_code":200'
+  ```
+- **Tìm các lần kích hoạt Fallback**:
+  ```bash
+  grep 'ALERT \[FALLBACK_TRIGGERED\]' backend.log
+  ```
+- **Tìm các cảnh báo ETA bất thường**:
+  ```bash
+  grep 'ALERT \[ETA_ANOMALY\]' backend.log
+  ```
+
+---
+
+## 7. Liên Hệ Hỗ Trợ Sự Cố (Incident Support)
 
 Khi gặp sự cố phân tuyến nghiêm trọng không thể tự khắc phục theo Runbook:
 
@@ -134,3 +198,4 @@ Khi gặp sự cố phân tuyến nghiêm trọng không thể tự khắc phụ
 - **Tài liệu tham khảo liên quan**:
   - `backend/ROUTE_GENERATION_CONTRACT.md` — Hợp đồng dữ liệu phân tuyến
   - `backend/scripts/experiment_day9_realistic_run.py` — Script thực nghiệm phân tuyến thực tế
+

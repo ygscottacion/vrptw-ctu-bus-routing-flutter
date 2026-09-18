@@ -273,3 +273,95 @@ def read_route_detail(
             )
 
     return route
+
+
+import time
+from fastapi import Request
+from typing import Tuple
+from app.schemas.route import PolylineResponse
+from app.services.student_routing.helpers.goong_direction import goong_direction_service
+
+# Simple rate limiter for polyline requests (max 60 req/min per IP)
+_rate_limit_store: dict[str, list[float]] = {}
+
+def _check_rate_limit(client_ip: str, limit: int = 60, window_seconds: float = 60.0):
+    now = time.time()
+    timestamps = _rate_limit_store.get(client_ip, [])
+    valid_timestamps = [t for t in timestamps if now - t < window_seconds]
+    if len(valid_timestamps) >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Bạn đã gửi quá nhiều yêu cầu định tuyến trong thời gian ngắn. Vui lòng thử lại sau 1 phút."
+        )
+    valid_timestamps.append(now)
+    _rate_limit_store[client_ip] = valid_timestamps
+
+
+@router.get("/polyline", response_model=PolylineResponse, status_code=status.HTTP_200_OK)
+def get_route_polyline(
+    request: Request,
+    origin: Optional[str] = Query(None, description="Tọa độ điểm đầu 'lat,lng'"),
+    destination: Optional[str] = Query(None, description="Tọa độ điểm cuối 'lat,lng'"),
+    waypoints: Optional[str] = Query(None, description="Chuỗi tọa độ phân cách bởi dấu chấm phẩy ';' hoặc '|'"),
+    current_profile: Profile = Depends(deps.get_current_profile),
+) -> Any:
+    """
+    Endpoint nội bộ lấy đường dẫn uốn lượn (polyline), quãng đường (km) và thời gian di chuyển (phút).
+    Đã qua mã hóa, xác thực và lưu Cache 24h.
+    Không lộ Goong REST API Key cho mobile client.
+    """
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    _check_rate_limit(client_ip)
+
+    parsed_pts: List[Tuple[float, float]] = []
+
+    if waypoints:
+        raw_list = waypoints.replace("|", ";").split(";")
+        for item in raw_list:
+            item = item.strip()
+            if not item:
+                continue
+            parts = item.split(",")
+            if len(parts) != 2:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tọa độ waypoint '{item}' không hợp lệ. Định dạng chuẩn: 'lat,lng'",
+                )
+            try:
+                lat, lng = float(parts[0]), float(parts[1])
+                parsed_pts.append((lat, lng))
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tọa độ waypoint '{item}' phải là số thực hợp lệ.",
+                )
+    elif origin and destination:
+        for name, str_val in [("origin", origin), ("destination", destination)]:
+            parts = str_val.strip().split(",")
+            if len(parts) != 2:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tọa độ {name} '{str_val}' không hợp lệ. Định dạng chuẩn: 'lat,lng'",
+                )
+            try:
+                lat, lng = float(parts[0]), float(parts[1])
+                parsed_pts.append((lat, lng))
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Tọa độ {name} '{str_val}' phải là số thực hợp lệ.",
+                )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cần truyền tham số 'waypoints' (ví dụ: 'lat1,lng1;lat2,lng2') hoặc cặp 'origin' và 'destination'.",
+        )
+
+    if len(parsed_pts) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cần tối thiểu 2 điểm tọa độ để tính toán lộ trình.",
+        )
+
+    return goong_direction_service.get_route_polyline(parsed_pts)
+

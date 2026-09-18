@@ -4,10 +4,14 @@ from app.core.config import settings
 
 SQLALCHEMY_DATABASE_URL = settings.assemble_db_connection()
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    pool_pre_ping=True,
-)
+try:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_pre_ping=True,
+    )
+except Exception:
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

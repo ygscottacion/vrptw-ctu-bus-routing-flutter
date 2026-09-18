@@ -21,10 +21,20 @@ SPEED_MORNING_PEAK_KMH   = 25.0     # Morning peak (06:30 - 08:30)
 SPEED_NOON_PEAK_KMH      = 28.0     # Noon peak (11:00 - 13:00)
 SPEED_NORMAL_KMH         = 30.0     # Normal traffic speed
 
-# ── OSRM & Matrix Settings ─────────────────────────────────────────────
+# ── Goong Maps & Distance Matrix Settings ──────────────────────────────
+from app.core.config import settings
+
+GOONG_API_KEY                  = settings.GOONG_API_KEY
+GOONG_MAPTILES_KEY             = settings.GOONG_MAPTILES_KEY
+GOONG_DIRECTION_BASE_URL       = settings.GOONG_DIRECTION_BASE_URL
+GOONG_DISTANCE_MATRIX_BASE_URL = settings.GOONG_DISTANCE_MATRIX_BASE_URL
+GOONG_TIMEOUT_SECONDS          = 3.0      # 3 seconds fallback trigger
+
+# ── Deprecated OSRM Settings (Retained for backwards compatibility) ────
 OSRM_PUBLIC_URL          = "http://router.project-osrm.org/table/v1/driving/"
 OSRM_TIMEOUT_SECONDS     = 3.0      # 3 seconds fallback trigger
 TRAFFIC_CACHE_TTL        = 300      # 5 minutes
+
 
 # ── Objective Function Weights & Penalties ────────────────────────────
 DISTANCE_WEIGHT          = 1.0

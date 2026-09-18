@@ -6,6 +6,7 @@ import '../../services/api_service.dart';
 import '../../services/gps_service.dart';
 import '../../services/routing_service.dart';
 import '../../theme/app_theme.dart';
+import '../../config/api_config.dart';
 
 class DriverMapTab extends StatefulWidget {
   const DriverMapTab({
@@ -292,8 +293,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                           MapOptions(initialCenter: _center, initialZoom: 13.5),
                       children: [
                         TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            urlTemplate: ApiConfig.goongTileUrl,
                             userAgentPackageName: 'com.ctu.myctubus'),
                         if (_stops.length > 1)
                           PolylineLayer(polylines: [

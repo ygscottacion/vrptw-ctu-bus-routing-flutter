@@ -1,11 +1,15 @@
 import math
 import logging
 import urllib.request
+import urllib.error
 import json
+import time
+import warnings
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Tuple
 from app.services.student_routing import config
 from app.services.student_routing.helpers.path_flexibility import PathFlexibilityManager
+from app.services.student_routing.helpers.goong_metrics import goong_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +80,120 @@ class StaticDistanceMatrixProvider(DistanceMatrixProvider):
         return distance_matrix, travel_time_matrix, "STATIC_FALLBACK"
 
 
+import warnings
+import urllib.error
+
+def deprecated(reason: str):
+    """Decorator to mark classes or functions as deprecated."""
+    def decorator(cls_or_func):
+        orig_init = getattr(cls_or_func, "__init__", None)
+        if orig_init:
+            def new_init(self, *args, **kwargs):
+                warnings.warn(
+                    f"{cls_or_func.__name__} is deprecated: {reason}",
+                    DeprecationWarning,
+                    stacklevel=2
+                )
+                orig_init(self, *args, **kwargs)
+            cls_or_func.__init__ = new_init
+        return cls_or_func
+    return decorator
+
+
+class GoongDistanceMatrixProvider(DistanceMatrixProvider):
+    """
+    Provider tích hợp Goong Distance Matrix API với fallback sang Static Matrix khi bị lỗi / timeout / missing key.
+    """
+
+    def __init__(
+        self,
+        api_key: str = None,
+        base_url: str = None,
+        timeout: float = None
+    ):
+        self.api_key = api_key if api_key is not None else config.GOONG_API_KEY
+        self.base_url = (base_url if base_url is not None else config.GOONG_DISTANCE_MATRIX_BASE_URL).rstrip('/')
+        self.timeout = timeout if timeout is not None else config.GOONG_TIMEOUT_SECONDS
+        self.static_provider = StaticDistanceMatrixProvider()
+
+    def get_matrix(
+        self,
+        points: List[Dict[str, float]],
+        time_str_or_session: str = "MORNING_1"
+    ) -> Tuple[List[List[float]], List[List[float]], str]:
+        if not points:
+            return [], [], "STATIC_FALLBACK"
+
+        if not self.api_key or self.api_key.startswith("your-"):
+            goong_metrics.record_fallback("Missing or unconfigured GOONG_API_KEY")
+            return self.static_provider.get_matrix(points, time_str_or_session)
+
+        origins = "|".join([f"{p['lat']},{p['lng']}" for p in points])
+        destinations = "|".join([f"{p['lat']},{p['lng']}" for p in points])
+        url = f"{self.base_url}?origins={origins}&destinations={destinations}&vehicle=car&api_key={self.api_key}"
+        summary = f"points_count={len(points)}"
+
+        start_time = time.time()
+        status_code = 500
+        error_msg = None
+
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "CTUBusRouting/2.0"})
+            with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                status_code = response.status
+                latency = (time.time() - start_time) * 1000.0
+
+                if response.status == 200:
+                    data = json.loads(response.read().decode("utf-8"))
+                    rows = data.get("rows", [])
+                    n = len(points)
+                    if len(rows) == n:
+                        dist_matrix = [[0.0] * n for _ in range(n)]
+                        time_matrix = [[0.0] * n for _ in range(n)]
+
+                        for i in range(n):
+                            elements = rows[i].get("elements", [])
+                            if len(elements) != n:
+                                raise ValueError(f"Unexpected element count in row {i}: got {len(elements)}, expected {n}")
+                            for j in range(n):
+                                elem = elements[j]
+                                elem_status = elem.get("status", "OK")
+                                if elem_status != "OK":
+                                    raise ValueError(f"Goong Matrix element status error at ({i},{j}): {elem_status}")
+
+                                val_m = elem.get("distance", {}).get("value", 0)
+                                val_s = elem.get("duration", {}).get("value", 0)
+                                dist_matrix[i][j] = round(val_m / 1000.0, 3)  # meters -> km
+                                time_matrix[i][j] = round(val_s / 60.0, 2)    # seconds -> minutes
+
+                                # Validate ETA anomaly if i != j
+                                if i != j:
+                                    goong_metrics.validate_eta_anomaly(dist_matrix[i][j], time_matrix[i][j], f"pt[{i}]->pt[{j}]")
+
+                        goong_metrics.log_goong_call("distance_matrix", summary, latency, 200, cache_hit=False)
+                        return dist_matrix, time_matrix, "GOONG"
+                    else:
+                        error_msg = f"Response rows count mismatch: got {len(rows)}, expected {n}"
+        except urllib.error.HTTPError as e:
+            status_code = e.code
+            error_msg = f"HTTPError {e.code}: {e.reason}"
+        except Exception as e:
+            error_msg = f"Request failed: {e}"
+
+        latency = (time.time() - start_time) * 1000.0
+        goong_metrics.log_goong_call("distance_matrix", summary, latency, status_code, cache_hit=False, error=error_msg)
+        goong_metrics.record_fallback(error_msg or f"HTTP {status_code}")
+
+        # Fallback to static matrix if Goong API call failed, rate limited, or timed out
+        return self.static_provider.get_matrix(points, time_str_or_session)
+
+
+
+@deprecated("OSRM Public API is deprecated. Use GoongDistanceMatrixProvider instead.")
 class OSRMWithFallbackProvider(DistanceMatrixProvider):
     """
     Provider tích hợp OSRM Public API với timeout 3s và fallback sang Static Matrix khi bị lỗi / timeout.
+    @deprecated: Ưu tiên dùng GoongDistanceMatrixProvider.
     """
 
     def __init__(self, osrm_url: str = config.OSRM_PUBLIC_URL, timeout: float = config.OSRM_TIMEOUT_SECONDS):
@@ -122,3 +237,4 @@ class OSRMWithFallbackProvider(DistanceMatrixProvider):
 
         # Fallback to static matrix if OSRM call failed or timed out
         return self.static_provider.get_matrix(points, time_str_or_session)
+

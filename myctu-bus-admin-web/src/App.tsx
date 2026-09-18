@@ -273,8 +273,9 @@ function RealtimeMapPage() {
 
     if (window.L) {
       const map = window.L.map(mapRef.current).setView([10.0305, 105.7684], 15);
-      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+      const goongTileKey = (import.meta as any).env?.VITE_GOONG_MAPTILES_KEY || 'rwZKp27qLAlPcckb3HOe3E4JwiOaR54wPiW9hwJx';
+      window.L.tileLayer(`https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=${goongTileKey}`, {
+        attribution: '&copy; Goong Maps'
       }).addTo(map);
       leafletMap.current = map;
     }
