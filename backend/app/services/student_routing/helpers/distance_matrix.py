@@ -128,56 +128,73 @@ class GoongDistanceMatrixProvider(DistanceMatrixProvider):
             goong_metrics.record_fallback("Missing or unconfigured GOONG_API_KEY")
             return self.static_provider.get_matrix(points, time_str_or_session)
 
-        origins = "|".join([f"{p['lat']},{p['lng']}" for p in points])
-        destinations = "|".join([f"{p['lat']},{p['lng']}" for p in points])
-        url = f"{self.base_url}?origins={origins}&destinations={destinations}&vehicle=car&api_key={self.api_key}"
-        summary = f"points_count={len(points)}"
+        n = len(points)
+        dist_matrix = [[0.0] * n for _ in range(n)]
+        time_matrix = [[0.0] * n for _ in range(n)]
 
+        # Goong Distance Matrix API limit: max 100 elements (origins * destinations <= 100)
+        CHUNK_SIZE = 10
+        summary = f"points_count={n}"
         start_time = time.time()
-        status_code = 500
+        status_code = 200
         error_msg = None
 
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "CTUBusRouting/2.0"})
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                status_code = response.status
-                latency = (time.time() - start_time) * 1000.0
+            for i in range(0, n, CHUNK_SIZE):
+                orig_chunk = points[i:i + CHUNK_SIZE]
+                orig_str = "|".join([f"{p['lat']},{p['lng']}" for p in orig_chunk])
 
-                if response.status == 200:
-                    data = json.loads(response.read().decode("utf-8"))
-                    rows = data.get("rows", [])
-                    n = len(points)
-                    if len(rows) == n:
-                        dist_matrix = [[0.0] * n for _ in range(n)]
-                        time_matrix = [[0.0] * n for _ in range(n)]
+                for j in range(0, n, CHUNK_SIZE):
+                    dest_chunk = points[j:j + CHUNK_SIZE]
+                    dest_str = "|".join([f"{p['lat']},{p['lng']}" for p in dest_chunk])
 
-                        for i in range(n):
-                            elements = rows[i].get("elements", [])
-                            if len(elements) != n:
-                                raise ValueError(f"Unexpected element count in row {i}: got {len(elements)}, expected {n}")
-                            for j in range(n):
-                                elem = elements[j]
+                    url = f"{self.base_url}?origins={orig_str}&destinations={dest_str}&vehicle=car&api_key={self.api_key}"
+                    req = urllib.request.Request(url, headers={"User-Agent": "CTUBusRouting/2.0"})
+
+                    with urllib.request.urlopen(req, timeout=self.timeout) as response:
+                        if response.status != 200:
+                            raise urllib.error.HTTPError(url, response.status, f"HTTP {response.status}", {}, None)
+
+                        data = json.loads(response.read().decode("utf-8"))
+                        rows = data.get("rows", [])
+
+                        if len(rows) != len(orig_chunk):
+                            raise ValueError(f"Response rows count mismatch: got {len(rows)}, expected {len(orig_chunk)}")
+
+                        for r_idx, row in enumerate(rows):
+                            elements = row.get("elements", [])
+                            if len(elements) != len(dest_chunk):
+                                raise ValueError(f"Element count mismatch in row {r_idx}: got {len(elements)}, expected {len(dest_chunk)}")
+
+                            for c_idx, elem in enumerate(elements):
                                 elem_status = elem.get("status", "OK")
                                 if elem_status != "OK":
-                                    raise ValueError(f"Goong Matrix element status error at ({i},{j}): {elem_status}")
+                                    raise ValueError(f"Goong Matrix element status error at ({i + r_idx},{j + c_idx}): {elem_status}")
 
                                 val_m = elem.get("distance", {}).get("value", 0)
                                 val_s = elem.get("duration", {}).get("value", 0)
-                                dist_matrix[i][j] = round(val_m / 1000.0, 3)  # meters -> km
-                                time_matrix[i][j] = round(val_s / 60.0, 2)    # seconds -> minutes
 
-                                # Validate ETA anomaly if i != j
-                                if i != j:
-                                    goong_metrics.validate_eta_anomaly(dist_matrix[i][j], time_matrix[i][j], f"pt[{i}]->pt[{j}]")
+                                row_i = i + r_idx
+                                col_j = j + c_idx
+                                dist_matrix[row_i][col_j] = round(val_m / 1000.0, 3)  # meters -> km
+                                time_matrix[row_i][col_j] = round(val_s / 60.0, 2)    # seconds -> minutes
 
-                        goong_metrics.log_goong_call("distance_matrix", summary, latency, 200, cache_hit=False)
-                        return dist_matrix, time_matrix, "GOONG"
-                    else:
-                        error_msg = f"Response rows count mismatch: got {len(rows)}, expected {n}"
+                                if row_i != col_j:
+                                    goong_metrics.validate_eta_anomaly(
+                                        dist_matrix[row_i][col_j],
+                                        time_matrix[row_i][col_j],
+                                        f"pt[{row_i}]->pt[{col_j}]"
+                                    )
+
+            latency = (time.time() - start_time) * 1000.0
+            goong_metrics.log_goong_call("distance_matrix", summary, latency, 200, cache_hit=False)
+            return dist_matrix, time_matrix, "GOONG"
+
         except urllib.error.HTTPError as e:
             status_code = e.code
             error_msg = f"HTTPError {e.code}: {e.reason}"
         except Exception as e:
+            status_code = 500
             error_msg = f"Request failed: {e}"
 
         latency = (time.time() - start_time) * 1000.0

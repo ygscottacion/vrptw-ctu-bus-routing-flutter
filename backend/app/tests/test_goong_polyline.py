@@ -40,7 +40,8 @@ def test_goong_direction_service_cache_hit_and_miss():
     mock_resp.read.return_value = json.dumps(GOONG_DIRECTION_RESPONSE).encode("utf-8")
     mock_resp.__enter__.return_value = mock_resp
 
-    with patch("urllib.request.urlopen", return_value=mock_resp):
+    with patch("app.services.student_routing.helpers.goong_direction.settings.GOONG_API_KEY", "test_api_key"), \
+         patch("urllib.request.urlopen", return_value=mock_resp):
         # 1st call -> Cache Miss
         res1 = service.get_route_polyline(waypoints)
         assert res1["cached"] is False

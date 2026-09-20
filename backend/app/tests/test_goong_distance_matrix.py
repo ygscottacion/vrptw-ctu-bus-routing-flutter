@@ -127,3 +127,38 @@ def test_osrm_deprecated_warning():
     with pytest.deprecated_call():
         provider = OSRMWithFallbackProvider()
         assert provider.timeout == 3.0
+
+
+def test_goong_distance_matrix_chunking_for_large_points():
+    provider = GoongDistanceMatrixProvider(api_key="7WSy0ek8OLEv1HZvB9oikhHT6hVrohUdCLShbK8S")
+    # 20 points requires 2x2 = 4 chunks of size 10
+    large_points = [{"lat": 10.0 + i * 0.001, "lng": 105.7 + i * 0.001} for i in range(20)]
+
+    chunk_response = {
+        "rows": [
+            {
+                "elements": [
+                    {"distance": {"value": 1000}, "duration": {"value": 120}, "status": "OK"}
+                    for _ in range(10)
+                ]
+            }
+            for _ in range(10)
+        ]
+    }
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.read.return_value = json.dumps(chunk_response).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        dist_matrix, time_matrix, source = provider.get_matrix(large_points)
+
+    assert source == "GOONG"
+    assert len(dist_matrix) == 20
+    assert len(time_matrix) == 20
+    # Should make 4 calls to urlopen for 20x20 matrix chunking (10x10 each)
+    assert mock_urlopen.call_count == 4
+    assert dist_matrix[0][0] == 1.0
+    assert time_matrix[0][0] == 2.0
+
