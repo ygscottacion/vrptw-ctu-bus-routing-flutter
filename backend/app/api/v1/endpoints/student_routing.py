@@ -28,3 +28,19 @@ def optimize_student_routes(payload: StudentRoutingOptimizeRequest) -> Optimizat
         stations=payload.stations,
         options=payload.options
     )
+
+
+@router.get("/benchmark/60-students", status_code=status.HTTP_200_OK)
+def run_60_students_benchmark(num_vehicles: int = 2, num_stations: int = 20, num_runs: int = 1):
+    """
+    Endpoint benchmark phục vụ Khánh (Frontend/API) đối sánh Baseline vs Tabu Search
+    trên kịch bản 60 sinh viên quanh CTU (chia vào >= 2 xe, chặn quá tải/quá giờ) cho ngày 14.
+    """
+    from app.services.student_routing.benchmark import StudentRoutingBenchmark
+    benchmark = StudentRoutingBenchmark()
+    return benchmark.run_60_students_scenario(
+        num_vehicles=num_vehicles,
+        num_stations=num_stations,
+        num_runs=num_runs
+    )
+
