@@ -242,7 +242,11 @@ def main():
         print("  ✅ Không phát hiện lệch snap-to-road.")
 
     # --- Xuất CSV tổng hợp ---
-    output_path = "/app/test_20_stations_report.csv"
+    import os
+    if os.path.exists("/app") and os.path.isdir("/app"):
+        output_path = "/app/test_20_stations_report.csv"
+    else:
+        output_path = os.path.join(os.path.dirname(__file__), "test_20_stations_report.csv")
     with open(output_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["category", "detail"])

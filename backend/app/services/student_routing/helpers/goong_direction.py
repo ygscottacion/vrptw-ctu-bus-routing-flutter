@@ -173,6 +173,23 @@ class GoongDirectionService:
             "cached_at": None,
         }
 
+    def get_direction(
+        self,
+        origin: Dict[str, float],
+        destination: Dict[str, float],
+        vehicle: str = "car"
+    ) -> Dict[str, Any]:
+        """Direct call to Goong Direction API returning raw routes dict for snap-to-road checks."""
+        api_key = settings.GOONG_API_KEY
+        base_url = settings.GOONG_DIRECTION_BASE_URL.rstrip('/')
+        url = f"{base_url}?origin={origin['lat']},{origin['lng']}&destination={destination['lat']},{destination['lng']}&vehicle={vehicle}&api_key={api_key}"
+        req = urllib.request.Request(url, headers={"User-Agent": "CTUBusRouting/2.0"})
+        with urllib.request.urlopen(req, timeout=5.0) as response:
+            if response.status == 200:
+                return json.loads(response.read().decode("utf-8"))
+        return {}
 
-# Global singleton
+
+# Global singleton & Provider class alias
 goong_direction_service = GoongDirectionService()
+GoongDirectionProvider = GoongDirectionService

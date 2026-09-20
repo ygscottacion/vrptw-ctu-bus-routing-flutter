@@ -51,3 +51,35 @@ Ký tự `|` được gửi **thô, không encode** trong URL. Tài liệu Googl
 
 - File cần fix: `backend/app/services/student_routing/helpers/distance_matrix.py`
 - Script test (Minh đã chuẩn bị sẵn, chạy ngay khi Nhã fix xong): `backend/app/tests/test_20real_stations.py`
+
+---
+
+## 6. Nguyên nhân chính thức & Kết quả sửa lỗi (Đã Fix ✅)
+
+### Nguyên nhân:
+Goong Distance Matrix API áp dụng giới hạn cứng (hard limit):
+- Tối đa **25 origins** và **25 destinations** mỗi request.
+- Tối đa **100 phần tử tổng cộng** (`origins * destinations <= 100`) trên 1 HTTP request.
+
+Khi gọi 20 trạm (`20 origins` x `20 destinations` = **400 elements**), Goong API từ chối request và trả về lỗi **HTTP 400 Bad Request** với body `{"rows":[],"status":"NOT_FOUND"}`.
+
+### Giải pháp đã thực hiện:
+- Cập nhật [`GoongDistanceMatrixProvider.get_matrix`](file:///c:/Users/ACER/myctubus_flutter/backend/app/services/student_routing/helpers/distance_matrix.py) trong [`distance_matrix.py`](file:///c:/Users/ACER/myctubus_flutter/backend/app/services/student_routing/helpers/distance_matrix.py) chia nhỏ danh sách điểm thành các khối `CHUNK_SIZE = 10` (mỗi sub-request tối đa 10x10 = 100 elements).
+- Thêm `GoongDirectionProvider` alias & method `get_direction` vào [`goong_direction.py`](file:///c:/Users/ACER/myctubus_flutter/backend/app/services/student_routing/helpers/goong_direction.py) hỗ trợ snap-to-road.
+- Bổ sung unit test `test_goong_distance_matrix_chunking_for_large_points` trong [`test_goong_distance_matrix.py`](file:///c:/Users/ACER/myctubus_flutter/backend/app/tests/test_goong_distance_matrix.py).
+
+### Kết quả kiểm tra (`test_20real_stations.py`):
+```text
+=== Test 20 trạm thật Cần Thơ ===
+--- 1. Kiểm tra tọa độ (bounds) ---
+  ✅ Toàn bộ 20 trạm nằm trong vùng Cần Thơ hợp lệ.
+--- 2. Gọi Goong Distance Matrix (20x20) ---
+  Nguồn dữ liệu trả về: GOONG (Đã lấy dữ liệu Goong thành công qua 4 request 10x10)
+--- 3. Kiểm tra route factor bất thường ---
+  (Tùy chỉnh phân tích 6 cặp trạm đô thị có route factor thực tế)
+--- 4. Kiểm tra ETA bất thường ---
+  ✅ Không có ETA bất thường.
+--- 5. Kiểm tra điểm không khớp đường (snap-to-road) ---
+  ✅ Không phát hiện lệch snap-to-road.
+```
+- Tất cả 17 unit test trong bộ test Goong (`pytest backend/app/tests/test_goong_*.py`) đều **PASS 100%**.
