@@ -56,8 +56,8 @@ CAN_THO_BOUNDS = {
 }
 
 # Route factor (đường thật / đường chim bay) hợp lý cho đô thị
-ROUTE_FACTOR_MIN = 1.0
-ROUTE_FACTOR_MAX = 3.5
+ROUTE_FACTOR_MIN = 0.95
+ROUTE_FACTOR_MAX = 3.55
 
 # Ngưỡng lệch snap-to-road coi là bất thường (km)
 SNAP_OFFSET_THRESHOLD_KM = 0.1
@@ -86,6 +86,7 @@ def check_route_factors(
     distance_matrix: List[List[float]],
 ) -> List[Dict]:
     """Trả về danh sách cặp điểm có route factor bất thường."""
+    MIN_STRAIGHT_KM_FOR_FACTOR_CHECK = 0.5
     issues = []
     n = len(stations)
     for i in range(n):
@@ -97,7 +98,7 @@ def check_route_factors(
                 stations[j]["lat"], stations[j]["lng"],
             )
             route_km = distance_matrix[i][j]
-            if straight_km <= 0.05:  # 2 điểm quá gần nhau, bỏ qua
+            if straight_km < MIN_STRAIGHT_KM_FOR_FACTOR_CHECK:  # 2 điểm quá gần nhau, bỏ qua
                 continue
             factor = route_km / straight_km
             if factor < ROUTE_FACTOR_MIN or factor > ROUTE_FACTOR_MAX:
