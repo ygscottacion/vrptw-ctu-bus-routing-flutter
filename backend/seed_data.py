@@ -28,28 +28,28 @@ def seed():
             admin = User(
                 username="admin",
                 password_hash=get_password_hash("admin123"),
-                role=UserRole.ADMIN,
+                role="admin",
                 full_name="Quản trị viên CTU",
                 phone="0901234567"
             )
             driver1 = User(
                 username="driver1",
                 password_hash=get_password_hash("driver123"),
-                role=UserRole.DRIVER,
+                role="driver",
                 full_name="Tài xế Nguyễn Văn A",
                 phone="0918123456"
             )
             driver2 = User(
                 username="driver2",
                 password_hash=get_password_hash("driver123"),
-                role=UserRole.DRIVER,
+                role="driver",
                 full_name="Tài xế Trần Văn B",
                 phone="0918654321"
             )
             student1 = User(
                 username="student1",
                 password_hash=get_password_hash("student123"),
-                role=UserRole.PASSENGER,
+                role="passenger",
                 full_name="Sinh viên Lê Văn C",
                 phone="0939123456"
             )
@@ -59,19 +59,20 @@ def seed():
 
         # 2. Seed Depot & Locations (Can Tho Coordinates)
         if not db.query(Location).first():
-            depot = Location(name="Depot - ĐH Cần Thơ (Khu II)", latitude=10.0299, longitude=105.7684, demand=0)
-            loc1 = Location(name="Trạm 1 - Bến Ninh Kiều", latitude=10.0342, longitude=105.7876, demand=5)
-            loc2 = Location(name="Trạm 2 - Chợ Cái Răng", latitude=10.0031, longitude=105.7482, demand=8)
-            loc3 = Location(name="Trạm 3 - Công viên Sông Hậu", latitude=10.0461, longitude=105.7891, demand=6)
-            loc4 = Location(name="Trạm 4 - Siêu thị Lotte Mart", latitude=10.0402, longitude=105.7621, demand=10)
-            loc5 = Location(name="Trạm 5 - Bệnh viện ĐKTW Cần Thơ", latitude=10.0215, longitude=105.7531, demand=7)
-            loc6 = Location(name="Trạm 6 - Chợ Đêm Trần Phú", latitude=10.0435, longitude=105.7820, demand=4)
-            loc7 = Location(name="Trạm 7 - Siêu thị GO! Cần Thơ", latitude=10.0156, longitude=105.7645, demand=9)
-            loc8 = Location(name="Trạm 8 - Bến Xe Trung Tâm Cần Thơ", latitude=10.0078, longitude=105.7721, demand=12)
-            loc9 = Location(name="Trạm 9 - ĐH Y Dược Cần Thơ", latitude=10.0265, longitude=105.7580, demand=6)
-            loc10 = Location(name="Trạm 10 - Công viên Cầu Cần Thơ", latitude=10.0102, longitude=105.7950, demand=5)
+            depot = Location(code="DEPOT", name="Depot - ĐH Cần Thơ (Khu II)", latitude=10.0299, longitude=105.7684, demand=0)
+            loc1 = Location(code="LOC1", name="Trạm 1 - Bến Ninh Kiều", latitude=10.0342, longitude=105.7876, demand=5)
+            loc2 = Location(code="LOC2", name="Trạm 2 - Chợ Cái Răng", latitude=10.0031, longitude=105.7482, demand=8)
+            loc3 = Location(code="LOC3", name="Trạm 3 - Công viên Sông Hậu", latitude=10.0461, longitude=105.7891, demand=6)
+            loc4 = Location(code="LOC4", name="Trạm 4 - Siêu thị Lotte Mart", latitude=10.0402, longitude=105.7621, demand=10)
+            loc5 = Location(code="LOC5", name="Trạm 5 - Bệnh viện ĐKTW Cần Thơ", latitude=10.0215, longitude=105.7531, demand=7)
+            loc6 = Location(code="LOC6", name="Trạm 6 - Chợ Đêm Trần Phú", latitude=10.0435, longitude=105.7820, demand=4)
+            loc7 = Location(code="LOC7", name="Trạm 7 - Siêu thị GO! Cần Thơ", latitude=10.0156, longitude=105.7645, demand=9)
+            loc8 = Location(code="LOC8", name="Trạm 8 - Bến Xe Trung Tâm Cần Thơ", latitude=10.0078, longitude=105.7721, demand=12)
+            loc9 = Location(code="LOC9", name="Trạm 9 - ĐH Y Dược Cần Thơ", latitude=10.0265, longitude=105.7580, demand=6)
+            loc10 = Location(code="LOC10", name="Trạm 10 - Công viên Cầu Cần Thơ", latitude=10.0102, longitude=105.7950, demand=5)
 
-            db.add_all([depot, loc1, loc2, loc3, loc4, loc5, loc6, loc7, loc8, loc9, loc10])
+            for loc in locations_data:
+                db.merge(loc)  # Tự động insert nếu chưa có, update nếu đã tồn tại
             db.commit()
             print("✅ Locations seeded (CTU Depot + 10 Bus Stops)")
 

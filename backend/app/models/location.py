@@ -8,6 +8,7 @@ class Location(Base):
     __tablename__ = "locations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(50), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
     latitude = Column(Float, nullable=False)
     longitude = Column(Float, nullable=False)

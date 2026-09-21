@@ -30,6 +30,26 @@ class ApiConfig {
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6eWJza3dsY3RieW5ia3FubGx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4MDU5NDEsImV4cCI6MjEwMzM4MTk0MX0.3HjI2OoPAZ5pfapxtdfgajJxD7F_9OsbjWnOja9v8pI',
   );
 
+  /// Cấu hình Goong Maps API
+  static const String goongMapTilesKey = String.fromEnvironment(
+    'GOONG_MAPTILES_KEY',
+    defaultValue: 'rwZKp27qLAlPcckb3HOe3E4JwiOaR54wPiW9hwJx',
+  );
+
+  static const String goongApiKey = String.fromEnvironment(
+    'GOONG_API_KEY',
+    defaultValue: '7WSy0ek8OLEv1HZvB9oikhHT6hVrohUdCLShbK8S',
+  );
+
+  /// URL template cho TileLayer raster tiles
+  static String get goongTileUrl =>
+      'https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=$goongMapTilesKey';
+
+  /// Style JSON URL cho Goong Map Vector/Web Style
+  static String get goongMapStyleUrl =>
+      'https://tiles.goong.io/assets/goong_map_web.json?api_key=$goongMapTilesKey';
+
+
   /// Gọi ở đầu main() để báo lỗi rõ ràng nếu quên truyền dart-define,
   /// thay vì để app crash mơ hồ khi Supabase.initialize() nhận chuỗi rỗng.
   static void assertConfigured() {

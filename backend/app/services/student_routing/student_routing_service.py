@@ -6,7 +6,7 @@ from app.services.student_routing.schemas import (
     OptimizationResponse, PartialResult, InfeasibleStation
 )
 from app.services.student_routing.helpers.distance_matrix import (
-    OSRMWithFallbackProvider, haversine_distance
+    GoongDistanceMatrixProvider, OSRMWithFallbackProvider, haversine_distance, DistanceMatrixProvider
 )
 from app.services.student_routing.core.evaluator import SolutionEvaluator
 from app.services.student_routing.core.sweep_clustering import SweepClusterer
@@ -20,14 +20,15 @@ class StudentRoutingService:
     Pipeline thực thi:
       1. Validation & Service Radius Check (<= 10km)
       2. Ride Time Feasibility Preprocessing (Reject individual station if > 45 mins)
-      3. Distance / Travel Time Matrix Construction (OSRM with 3s Timeout & Fallback)
+      3. Distance / Travel Time Matrix Construction (Goong Maps API with 3s Timeout & Fallback)
       4. Sweep Algorithm (Khởi tạo Lời giải Ban đầu)
       5. Tabu Search Optimization (Tối ưu Lộ trình & VRPTW)
       6. Formatting Response JSON
     """
 
-    def __init__(self):
-        self.distance_provider = OSRMWithFallbackProvider()
+    def __init__(self, distance_provider: DistanceMatrixProvider = None):
+        self.distance_provider = distance_provider or GoongDistanceMatrixProvider()
+
         self.evaluator = SolutionEvaluator()
         self.sweep_clusterer = SweepClusterer()
         self.tabu_optimizer = TabuSearchOptimizer(evaluator=self.evaluator)

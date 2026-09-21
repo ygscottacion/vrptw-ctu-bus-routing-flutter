@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
 import '../services/routing_service.dart';
+import '../config/api_config.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key, required this.api});
@@ -258,7 +259,7 @@ class _MapScreenState extends State<MapScreen> {
       ),
       children: [
         TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          urlTemplate: ApiConfig.goongTileUrl,
           userAgentPackageName: 'com.ctu.myctubus_flutter',
         ),
         // Route polylines

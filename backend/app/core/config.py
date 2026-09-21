@@ -25,8 +25,36 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
 
+    # Environment Settings
+    ENVIRONMENT: str = "development"
+
     # Google Routes API Settings
     GOOGLE_ROUTES_API_KEY: str = ""
+
+    # Goong Maps API Settings
+    GOONG_API_KEY: str = ""
+    GOONG_MAPTILES_KEY: str = ""
+    GOONG_DIRECTION_BASE_URL: str = "https://rsapi.goong.io/Direction"
+    GOONG_DISTANCE_MATRIX_BASE_URL: str = "https://rsapi.goong.io/DistanceMatrix"
+
+    def validate_goong_config(self) -> None:
+        """Validate Goong API key configuration.
+        Fail-fast in production if missing. Log warning in development.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        if not self.GOONG_API_KEY or self.GOONG_API_KEY.startswith("your-"):
+            if self.ENVIRONMENT.lower() in ("production", "prod"):
+                raise ValueError(
+                    "CRITICAL: GOONG_API_KEY is missing or unconfigured in production environment! "
+                    "Cannot start service without valid Goong API key."
+                )
+            else:
+                logger.warning(
+                    "WARNING: GOONG_API_KEY is not configured. "
+                    "Goong distance matrix service will fallback to StaticDistanceMatrixProvider."
+                )
+
 
 
     @property
