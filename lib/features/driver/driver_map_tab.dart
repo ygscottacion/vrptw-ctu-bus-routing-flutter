@@ -241,6 +241,11 @@ class _DriverMapTabState extends State<DriverMapTab>
       final updatedRoute = wasInProgress
           ? await widget.api.endRoute(routeId)
           : await widget.api.startRoute(routeId);
+      if (wasInProgress) {
+        GpsService().stopTracking();
+      } else {
+        GpsService().startTracking(routeId: routeId, api: widget.api);
+      }
       if (mounted) {
         setState(() {
           _route = updatedRoute;
