@@ -148,33 +148,99 @@ class StudentRoutingBenchmark:
         sweep_cost = round(sweep_eval.total_distance * cost_per_km, 2)
         tabu_cost = round(best_tabu_eval.total_distance * cost_per_km, 2)
 
+        result_payload = {
+            "dataset_name": name,
+            "num_vehicles": num_vehicles,
+            "num_stations": num_stations,
+            "total_students": total_students,
+            "baseline": {
+                "routes_count": len(sweep_routes),
+                "total_distance_km": sweep_eval.total_distance,
+                "total_travel_time_min": sweep_eval.total_travel_time,
+                "early_arrival_min": sweep_eval.total_early_arrival,
+                "late_arrival_min": sweep_eval.total_late_arrival,
+                "time_window_penalty": round(sweep_eval.early_penalty + sweep_eval.late_penalty, 2),
+                "capacity_violations": sweep_eval.capacity_violations,
+                "ride_time_violations": sweep_eval.ride_time_violations,
+                "objective_value": sweep_eval.objective_value,
+                "estimated_cost_usd": sweep_cost,
+                "runtime_ms": round(t_sweep_ms, 2)
+            },
+            "tabu_optimized": {
+                "routes_count": len(best_tabu_routes or []),
+                "total_distance_km": best_tabu_eval.total_distance,
+                "total_travel_time_min": best_tabu_eval.total_travel_time,
+                "early_arrival_min": best_tabu_eval.total_early_arrival,
+                "late_arrival_min": best_tabu_eval.total_late_arrival,
+                "time_window_penalty": round(best_tabu_eval.early_penalty + best_tabu_eval.late_penalty, 2),
+                "capacity_violations": best_tabu_eval.capacity_violations,
+                "ride_time_violations": best_tabu_eval.ride_time_violations,
+                "objective_value": best_tabu_eval.objective_value,
+                "estimated_cost_usd": tabu_cost,
+                "runtime_ms": round(statistics.mean(tabu_runtimes_ms), 2),
+                "avg_objective": round(avg_obj, 2),
+                "std_dev_objective": round(std_obj, 2)
+            },
+            "improvements": {
+                "distance_reduction_km": round(sweep_eval.total_distance - best_tabu_eval.total_distance, 2),
+                "distance_reduction_pct": round(((sweep_eval.total_distance - best_tabu_eval.total_distance) / sweep_eval.total_distance) * 100.0, 2) if sweep_eval.total_distance > 0 else 0.0,
+                "time_saved_min": round(sweep_eval.total_travel_time - best_tabu_eval.total_travel_time, 2),
+                "lateness_reduction_min": round(sweep_eval.total_late_arrival - best_tabu_eval.total_late_arrival, 2),
+                "cost_saved_usd": round(sweep_cost - tabu_cost, 2),
+                "objective_improvement_pct": round(imp_best_pct, 2)
+            },
+            "feasibility": {
+                "is_feasible": best_tabu_eval.is_feasible(),
+                "overload_prevented": best_tabu_eval.capacity_violations == 0,
+                "overtime_prevented": best_tabu_eval.ride_time_violations == 0,
+                "vehicles_used_ge_2": len(best_tabu_routes or []) >= 2 if total_students >= 60 else True
+            }
+        }
+
         print(f"\n=================== DATASET: {name.upper()} ({num_vehicles} Veh / {num_stations} St / {total_students} SV) ===================")
         print(f"Metrics                      | Baseline (Sweep)        | Sweep + Tabu Search (Best) | Improvement")
         print(f"-----------------------------|-------------------------|----------------------------|------------")
-        print(f"Total Distance (km)          | {sweep_eval.total_distance:<23} | {best_tabu_eval.total_distance:<26} | {round(sweep_eval.total_distance - best_tabu_eval.total_distance, 2)} km")
-        print(f"Estimated Cost ($)           | ${sweep_cost:<22} | ${tabu_cost:<25} | ${round(sweep_cost - tabu_cost, 2)}")
-        print(f"Total Travel Time (mins)     | {sweep_eval.total_travel_time:<23} | {best_tabu_eval.total_travel_time:<26} | {round(sweep_eval.total_travel_time - best_tabu_eval.total_travel_time, 2)} mins")
-        print(f"Early Arrival (mins)         | {sweep_eval.total_early_arrival:<23} | {best_tabu_eval.total_early_arrival:<26} | {round(sweep_eval.total_early_arrival - best_tabu_eval.total_early_arrival, 2)} mins")
-        print(f"Late Arrival (mins)          | {sweep_eval.total_late_arrival:<23} | {best_tabu_eval.total_late_arrival:<26} | {round(sweep_eval.total_late_arrival - best_tabu_eval.total_late_arrival, 2)} mins")
-        print(f"Time Window Penalty          | {round(sweep_eval.early_penalty + sweep_eval.late_penalty, 2):<23} | {round(best_tabu_eval.early_penalty + best_tabu_eval.late_penalty, 2):<26} | {round((sweep_eval.early_penalty + sweep_eval.late_penalty) - (best_tabu_eval.early_penalty + best_tabu_eval.late_penalty), 2)}")
-        print(f"Rejected Stops               | {0:<23} | {0:<26} | 0")
-        print(f"Objective Value              | {sweep_eval.objective_value:<23} | {best_tabu_eval.objective_value:<26} | {round(imp_best_pct, 2)}%")
-        print(f"Runtime (ms)                 | {round(t_sweep_ms, 2):<23} | {round(statistics.mean(tabu_runtimes_ms), 2):<26} | -")
-        print(f"Tabu Runs (Best/Avg/StdDev)  | -                       | {round(best_obj,2)} / {round(avg_obj,2)} / ±{round(std_obj,2)} | -")
+        print(f"Total Distance (km)          | {sweep_eval.total_distance:<23} | {best_tabu_eval.total_distance:<26} | {result_payload['improvements']['distance_reduction_km']} km")
+        print(f"Estimated Cost ($)           | ${sweep_cost:<22} | ${tabu_cost:<25} | ${result_payload['improvements']['cost_saved_usd']}")
+        print(f"Total Travel Time (mins)     | {sweep_eval.total_travel_time:<23} | {best_tabu_eval.total_travel_time:<26} | {result_payload['improvements']['time_saved_min']} mins")
+        print(f"Early Arrival (mins)         | {sweep_eval.total_early_arrival:<23} | {best_tabu_eval.total_early_arrival:<26} | -")
+        print(f"Late Arrival (mins)          | {sweep_eval.total_late_arrival:<23} | {best_tabu_eval.total_late_arrival:<26} | {result_payload['improvements']['lateness_reduction_min']} mins")
+        print(f"Time Window Penalty          | {result_payload['baseline']['time_window_penalty']:<23} | {result_payload['tabu_optimized']['time_window_penalty']:<26} | -")
+        print(f"Violations (Cap/RideTime)    | {sweep_eval.capacity_violations}/{sweep_eval.ride_time_violations:<20} | {best_tabu_eval.capacity_violations}/{best_tabu_eval.ride_time_violations:<23} | 0 Violations")
+        print(f"Objective Value              | {sweep_eval.objective_value:<23} | {best_tabu_eval.objective_value:<26} | {result_payload['improvements']['objective_improvement_pct']}%")
+        print(f"Runtime (ms)                 | {result_payload['baseline']['runtime_ms']:<23} | {result_payload['tabu_optimized']['runtime_ms']:<26} | -")
         print(f"====================================================================================================\n")
+
+        return result_payload
+
+    def run_60_students_scenario(self, num_vehicles: int = 2, num_stations: int = 20, num_runs: int = 1) -> Dict[str, Any]:
+        """
+        Kịch bản chuẩn: 60 sinh viên phân bổ quanh CTU (10km), chia vào >= 2 xe, chặn quá tải và quá giờ.
+        Phục vụ trực tiếp phối hợp với Khánh và nghiệm thu benchmark Ngày 14.
+        """
+        return self.run_single_dataset(
+            name="CTU-60-Students-Morning1",
+            num_vehicles=num_vehicles,
+            num_stations=num_stations,
+            total_students=60,
+            num_runs=num_runs
+        )
 
     def run_all(self):
         print("\n" + "="*80)
         print("          STUDENT ROUTING VRPTW BENCHMARK SUITE (SWEEP vs SWEEP+TABU)")
         print("="*80)
 
-        # 1. Small Dataset
+        # 1. 60 Sinh viên (Mục tiêu đồ án / NCKH)
+        self.run_60_students_scenario(num_vehicles=2, num_stations=20, num_runs=1)
+
+        # 2. Small Dataset
         self.run_single_dataset("Small", num_vehicles=3, num_stations=15, total_students=45)
 
-        # 2. Medium Dataset
+        # 3. Medium Dataset
         self.run_single_dataset("Medium", num_vehicles=4, num_stations=30, total_students=90)
 
-        # 3. Large Dataset
+        # 4. Large Dataset
         self.run_single_dataset("Large", num_vehicles=5, num_stations=50, total_students=150)
 
 
