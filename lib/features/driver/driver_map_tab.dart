@@ -299,6 +299,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                       children: [
                         TileLayer(
                             urlTemplate: ApiConfig.goongTileUrl,
+                            fallbackUrl: ApiConfig.fallbackTileUrl,
                             userAgentPackageName: 'com.ctu.myctubus'),
                         if (_stops.length > 1)
                           PolylineLayer(polylines: [

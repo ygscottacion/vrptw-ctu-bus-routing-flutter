@@ -41,13 +41,16 @@ class ApiConfig {
     defaultValue: '7WSy0ek8OLEv1HZvB9oikhHT6hVrohUdCLShbK8S',
   );
 
-  /// URL template cho TileLayer raster tiles (OpenStreetMap / Goong)
-  static String get mapTileUrl =>
+  /// URL template cho TileLayer raster tiles theo Goong Maps (Chuẩn dự án)
+  static String get goongTileUrl =>
+      'https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=$goongMapTilesKey';
+
+  /// URL template fallback (OpenStreetMap) khi Goong API key gặp sự cố hoặc 403
+  static String get fallbackTileUrl =>
       'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-  /// URL template cho TileLayer raster tiles
-  static String get goongTileUrl =>
-      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  /// URL template mặc định
+  static String get mapTileUrl => goongTileUrl;
 
   /// Style JSON URL cho Goong Map Vector/Web Style
   static String get goongMapStyleUrl =>
