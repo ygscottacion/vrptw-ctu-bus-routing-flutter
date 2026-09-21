@@ -184,13 +184,15 @@ def read_routes(
         )
     )
 
-    if service_date:
+    from fastapi.params import Param
+
+    if service_date is not None and not isinstance(service_date, Param):
         query = query.filter(Route.service_date == service_date)
-    if session_id:
+    if session_id is not None and not isinstance(session_id, Param):
         query = query.filter(Route.session_id == session_id)
-    if trip_type:
+    if trip_type is not None and not isinstance(trip_type, Param):
         query = query.filter(Route.trip_type == trip_type)
-    if status:
+    if status is not None and not isinstance(status, Param):
         query = query.filter(Route.status == status)
 
     # Apply RBAC filters
@@ -272,6 +274,95 @@ def read_route_detail(
                 detail="Tuyến xe này không thuộc xe do bạn quản lý.",
             )
 
+    return route
+
+
+@router.post("/{route_id}/start", response_model=RouteResponse)
+@router.patch("/{route_id}/start", response_model=RouteResponse)
+def start_route(
+    route_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_driver: Profile = Depends(deps.get_current_driver),
+) -> Any:
+    """
+    Tài xế bắt đầu ca chạy: chuyển trạng thái tuyến sang IN_PROGRESS.
+    Xác thực tài xế đang quản lý phương tiện được phân công cho tuyến xe.
+    """
+    route = (
+        db.query(Route)
+        .options(
+            selectinload(Route.stops).selectinload(RouteStop.location),
+            joinedload(Route.vehicle),
+        )
+        .filter(Route.id == route_id)
+        .first()
+    )
+    if not route:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy tuyến xe.",
+        )
+
+    if not route.vehicle_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tuyến xe chưa được gán cho phương tiện nào.",
+        )
+
+    vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
+    if not vehicle or vehicle.driver_id != current_driver.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tuyến xe này không thuộc xe do bạn quản lý.",
+        )
+
+    route.status = RouteStatus.IN_PROGRESS
+    db.commit()
+    db.refresh(route)
+    return route
+
+
+@router.post("/{route_id}/end", response_model=RouteResponse)
+@router.patch("/{route_id}/end", response_model=RouteResponse)
+def end_route(
+    route_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_driver: Profile = Depends(deps.get_current_driver),
+) -> Any:
+    """
+    Tài xế kết thúc ca chạy: chuyển trạng thái tuyến sang COMPLETED.
+    """
+    route = (
+        db.query(Route)
+        .options(
+            selectinload(Route.stops).selectinload(RouteStop.location),
+            joinedload(Route.vehicle),
+        )
+        .filter(Route.id == route_id)
+        .first()
+    )
+    if not route:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy tuyến xe.",
+        )
+
+    if not route.vehicle_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tuyến xe chưa được gán cho phương tiện nào.",
+        )
+
+    vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
+    if not vehicle or vehicle.driver_id != current_driver.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tuyến xe này không thuộc xe do bạn quản lý.",
+        )
+
+    route.status = RouteStatus.COMPLETED
+    db.commit()
+    db.refresh(route)
     return route
 
 

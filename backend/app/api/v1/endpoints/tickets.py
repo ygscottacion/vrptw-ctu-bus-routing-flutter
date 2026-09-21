@@ -212,8 +212,20 @@ def read_my_tickets(
     db: Session = Depends(deps.get_db),
     current_profile: Profile = Depends(deps.get_current_student),
 ) -> Any:
-    """Lấy danh sách tất cả các vé của sinh viên hiện tại."""
-    return db.query(Ticket).filter(Ticket.user_id == current_profile.id).order_by(Ticket.created_at.desc()).all()
+    """Lấy danh sách tất cả các vé của sinh viên hiện tại kèm thông tin trạm đón và ETA thực tế."""
+    from sqlalchemy.orm import joinedload, selectinload
+    from app.models.route import Route
+
+    return (
+        db.query(Ticket)
+        .options(
+            joinedload(Ticket.pickup_location),
+            selectinload(Ticket.route).selectinload(Route.stops),
+        )
+        .filter(Ticket.user_id == current_profile.id)
+        .order_by(Ticket.created_at.desc())
+        .all()
+    )
 
 
 @router.post("/verify-qr", response_model=TicketVerifyResponse)

@@ -1,6 +1,7 @@
 import enum
 import datetime
 import uuid
+from typing import Optional
 from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Enum as SQLEnum, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -45,6 +46,15 @@ class Ticket(Base):
     user = relationship("Profile")
     route = relationship("Route", back_populates="tickets")
     pickup_location = relationship("Location")
+
+    @property
+    def pickup_eta(self) -> Optional[datetime.datetime]:
+        """Estimated arrival time at this ticket's pickup station if assigned to a route."""
+        if self.route and hasattr(self.route, "stops") and self.route.stops:
+            for stop in self.route.stops:
+                if stop.location_id == self.pickup_location_id:
+                    return stop.arrival_time
+        return None
 
     __table_args__ = (
         UniqueConstraint("user_id", "service_date", "session_id", "trip_type", name="uq_tickets_user_run"),
