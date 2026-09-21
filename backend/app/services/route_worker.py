@@ -17,6 +17,7 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.vehicle import Vehicle
 from app.services.student_routing.schemas import SessionId, TripType
 from app.services.vrptw_solver import VRPTWSolverService
+from app.services.route_validator import RouteValidator, RouteValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +108,26 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
             raise RouteStopValidationError(job_id, f"Route {route.id} contains an unassigned ticket.")
         if route.passenger_count != len(tickets):
             raise RouteStopValidationError(job_id, f"Route {route.id} passenger_count mismatch.")
+        if route.passenger_count > 45:
+            raise RouteStopValidationError(job_id, f"Route {route.id} exceeds maximum capacity of 45 passengers.", "OVERLOAD_VIOLATION")
         actual_stops += len(stops)
         assigned_ids.update(str(ticket.id) for ticket in tickets)
     if len(assigned_ids) != expected_tickets_count:
         raise RouteStopValidationError(job_id, f"Assigned {len(assigned_ids)} of {expected_tickets_count} tickets.", "ROUTE_STOP_COUNT_MISMATCH")
     if actual_stops != expected_tickets_count + len(created_routes):
         raise RouteStopValidationError(job_id, "Total stop count does not equal depot + assigned tickets.", "ROUTE_STOP_COUNT_MISMATCH")
+
+    # Delegate full multi-constraint validation to Day 9 RouteValidator
+    try:
+        RouteValidator.validate_persisted_routes(
+            created_routes=created_routes,
+            expected_tickets_count=expected_tickets_count,
+            depot_location_id=depot_location_id,
+            max_capacity=45,
+            max_duration_minutes=90.0,
+        )
+    except RouteValidationError as exc:
+        raise RouteStopValidationError(job_id, exc.message, exc.error_code) from exc
 
 
 def _record_failed_job(db: Session, job_id: uuid.UUID, error_code: str, message: str, stack_trace: str) -> None:
@@ -191,6 +206,16 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                 raise
             if not solved_routes:
                 raise RouteStopValidationError(job_id_str, "Solver found no feasible route.")
+
+            # Thẩm định dữ liệu đầu ra từ Solver (<=45 khách, không lặp, <=90 phút)
+            try:
+                RouteValidator.validate_solver_routes(
+                    routes=solved_routes,
+                    max_capacity=45,
+                    max_duration_minutes=90.0,
+                )
+            except RouteValidationError as exc:
+                raise RouteStopValidationError(job_id_str, exc.message, exc.error_code) from exc
 
             created_routes: List[Tuple[Route, List[RouteStop], List[Ticket]]] = []
             assigned_ids: set[str] = set()

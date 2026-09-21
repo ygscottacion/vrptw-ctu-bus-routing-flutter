@@ -7,6 +7,7 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.idempotency_key import IdempotencyKey
 from app.models.incident import Incident
 from app.models.booking import Booking
+from app.models.route_matrix_cache import RouteMatrixCache
 
 __all__ = [
     "Profile",
@@ -23,4 +24,5 @@ __all__ = [
     "IdempotencyKey",
     "Incident",
     "Booking",
+    "RouteMatrixCache",
 ]

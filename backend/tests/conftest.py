@@ -46,6 +46,7 @@ def db_session():
     """
     from sqlalchemy import event
     from app.core.database import Base
+    import app.models  # noqa: F401 — đăng ký metadata cho create_all
 
     engine = create_engine(
         "sqlite:///:memory:",

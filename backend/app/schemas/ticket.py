@@ -24,6 +24,9 @@ class TicketReserveRequest(BaseModel):
     )
 
 
+from app.schemas.location import LocationResponse
+
+
 class TicketResponse(BaseModel):
     id: UUID
     user_id: UUID
@@ -32,6 +35,8 @@ class TicketResponse(BaseModel):
     session_id: str
     trip_type: str
     pickup_location_id: UUID
+    pickup_location: Optional[LocationResponse] = None
+    pickup_eta: Optional[datetime.datetime] = None
     qr_code: str
     status: TicketStatus
     created_at: datetime.datetime
