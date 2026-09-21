@@ -41,9 +41,13 @@ class ApiConfig {
     defaultValue: '7WSy0ek8OLEv1HZvB9oikhHT6hVrohUdCLShbK8S',
   );
 
+  /// URL template cho TileLayer raster tiles (OpenStreetMap / Goong)
+  static String get mapTileUrl =>
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
   /// URL template cho TileLayer raster tiles
   static String get goongTileUrl =>
-      'https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=$goongMapTilesKey';
+      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
   /// Style JSON URL cho Goong Map Vector/Web Style
   static String get goongMapStyleUrl =>
