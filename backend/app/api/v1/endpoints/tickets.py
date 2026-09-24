@@ -53,7 +53,7 @@ def reserve_ticket(
     current_profile: Profile = Depends(deps.get_current_student),
 ) -> Any:
     """
-    Giữ chỗ vé xe buýt theo ngày, ca, chiều và trạm đón.
+    Đặt mua vé xe buýt (trừ 7,000 VNĐ từ ví) theo ngày, ca, chiều và trạm đón.
     Chỉ áp dụng trước 22:00 (Asia/Ho_Chi_Minh) ngày hôm trước.
     """
     endpoint = "/api/v1/tickets/reserve"
@@ -72,73 +72,24 @@ def reserve_ticket(
             media_type="application/json",
         ) if not isinstance(existing_idempotency.response_body, dict) else existing_idempotency.response_body
 
-    # 1. Validate deadline
-    validate_booking_deadline(ticket_in.service_date)
+    from app.services.wallet_service import purchase_ticket
+    new_ticket = purchase_ticket(db=db, user_id=current_profile.id, ticket_in=ticket_in)
 
-    # 2. Check location
-    location = db.query(Location).filter(Location.id == ticket_in.pickup_location_id).first()
-    if not location:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Trạm đón đã chọn không tồn tại trên hệ thống.",
+    response_schema = TicketResponse.model_validate(new_ticket)
+    response_dict = response_schema.model_dump(mode="json")
+
+    if x_idempotency_key and req_hash:
+        save_idempotency_key(
+            db=db,
+            user_id=current_profile.id,
+            endpoint=endpoint,
+            key=x_idempotency_key,
+            request_hash=req_hash,
+            response_code=status.HTTP_201_CREATED,
+            response_body=response_dict,
         )
 
-    # 3. Check existing reservation in DB transaction
-    existing_ticket = db.query(Ticket).filter(
-        Ticket.user_id == current_profile.id,
-        Ticket.service_date == ticket_in.service_date,
-        Ticket.session_id == ticket_in.session_id,
-        Ticket.trip_type == ticket_in.trip_type,
-        Ticket.status.in_([TicketStatus.RESERVED, TicketStatus.ASSIGNED]),
-    ).first()
-
-    if existing_ticket:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bạn đã giữ chỗ cho chuyến đi này rồi.",
-        )
-
-    qr_code = f"TICKET_{uuid.uuid4().hex[:16].upper()}"
-
-    new_ticket = Ticket(
-        id=uuid.uuid4(),
-        user_id=current_profile.id,
-        route_id=None,
-        service_date=ticket_in.service_date,
-        session_id=ticket_in.session_id,
-        trip_type=ticket_in.trip_type,
-        pickup_location_id=ticket_in.pickup_location_id,
-        qr_code=qr_code,
-        status=TicketStatus.RESERVED,
-    )
-
-    try:
-        db.add(new_ticket)
-        db.flush()
-
-        response_schema = TicketResponse.model_validate(new_ticket)
-        response_dict = response_schema.model_dump(mode="json")
-
-        if x_idempotency_key and req_hash:
-            save_idempotency_key(
-                db=db,
-                user_id=current_profile.id,
-                endpoint=endpoint,
-                key=x_idempotency_key,
-                request_hash=req_hash,
-                response_code=status.HTTP_201_CREATED,
-                response_body=response_dict,
-            )
-
-        db.commit()
-        db.refresh(new_ticket)
-        return new_ticket
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bạn đã giữ chỗ cho lượt xe trong ca/chiều này rồi.",
-        )
+    return new_ticket
 
 
 @router.post("/{ticket_id}/cancel", response_model=TicketResponse)
@@ -149,8 +100,8 @@ def cancel_ticket(
     current_profile: Profile = Depends(deps.get_current_student),
 ) -> Any:
     """
-    Hủy lượt giữ chỗ vé trước deadline 22:00 ngày D-1.
-    Chỉ cho phép hủy vé ở trạng thái RESERVED.
+    Hủy vé trước deadline 22:00 ngày D-1 và hoàn lại 7,000 VNĐ vào ví.
+    Chỉ cho phép hủy vé ở trạng thái PAID_PENDING_ROUTE (hoặc RESERVED).
     """
     endpoint = f"/api/v1/tickets/{ticket_id}/cancel"
     existing_idempotency, req_hash = process_idempotency_key(
@@ -175,10 +126,10 @@ def cancel_ticket(
             detail="Không tìm thấy vé trong danh sách của bạn.",
         )
 
-    if ticket.status == TicketStatus.CANCELLED:
+    if ticket.status in (TicketStatus.REFUNDED, TicketStatus.CANCELLED):
         return ticket
 
-    if ticket.status != TicketStatus.RESERVED:
+    if ticket.status not in (TicketStatus.PAID_PENDING_ROUTE, TicketStatus.RESERVED):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Không thể hủy vé đang ở trạng thái {ticket.status.value}.",
@@ -186,7 +137,8 @@ def cancel_ticket(
 
     validate_booking_deadline(ticket.service_date)
 
-    ticket.status = TicketStatus.CANCELLED
+    from app.services.wallet_service import refund_ticket
+    refund_ticket(db, ticket.id, reason="user_cancelled_before_deadline")
 
     response_schema = TicketResponse.model_validate(ticket)
     response_dict = response_schema.model_dump(mode="json")
@@ -202,8 +154,6 @@ def cancel_ticket(
             response_body=response_dict,
         )
 
-    db.commit()
-    db.refresh(ticket)
     return ticket
 
 
@@ -279,7 +229,7 @@ def verify_ticket_qr(
             detail="Vé này đã được điểm danh trước đó.",
         )
 
-    if ticket.status not in (TicketStatus.ASSIGNED, TicketStatus.RESERVED):
+    if ticket.status not in (TicketStatus.ASSIGNED, TicketStatus.RESERVED, TicketStatus.PAID_PENDING_ROUTE):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Vé không ở trạng thái hợp lệ để điểm danh ({ticket.status.value}).",
