@@ -29,8 +29,16 @@ class RouteResponse(BaseModel):
     total_distance: float
     stops: List[RouteStopResponse] = []
     passenger_count: Optional[int] = None
+    approved_by: Optional[UUID] = None
+    approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RouteRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=255, description="Lý do từ chối tuyến")
+
 
 
 class RouteGenerateRequest(BaseModel):

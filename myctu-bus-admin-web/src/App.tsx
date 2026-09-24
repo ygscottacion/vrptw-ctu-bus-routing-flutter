@@ -2,10 +2,28 @@ import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
 import { api, auth, WS_URL } from './services/api';
 
-type User = { id: number; username: string; full_name?: string; phone?: string; role: string };
-type Vehicle = { id: number; license_plate: string; capacity: number; driver?: User; driver_id?: number };
-type Incident = { id: number; title: string; description?: string; status: string; reported_at: string; driver?: User };
-type BusLocation = { vehicle_id: number; license_plate?: string; latitude: number; longitude: number; speed?: number; status?: string };
+type User = { id: string; username: string; full_name?: string; phone?: string; role: string };
+type Vehicle = { id: string; license_plate: string; capacity: number; driver?: User; driver_id?: string };
+type Incident = { id: string; title: string; description?: string; status: string; reported_at: string; driver?: User };
+type BusLocation = { vehicle_id: string; license_plate?: string; latitude: number; longitude: number; speed?: number; status?: string };
+type LocationItem = { id: string; code?: string; name: string; latitude: number; longitude: number };
+type RouteStop = { id: string; route_id: string; location_id: string; stop_order: number; arrival_time?: string; location?: LocationItem };
+type RouteItem = {
+  id: string;
+  route_job_id?: string;
+  service_date: string;
+  session_id: string;
+  trip_type: string;
+  vehicle_id?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'in_progress' | 'completed';
+  total_distance: number;
+  stops: RouteStop[];
+  passenger_count?: number;
+  vehicle?: Vehicle;
+  approved_by?: string;
+  approved_at?: string;
+  rejection_reason?: string;
+};
 
 declare global {
   interface Window {
@@ -17,7 +35,7 @@ const menu = [
   ['/dashboard', '▦', 'Tổng quan'],
   ['/map', '📍', 'Bản đồ Realtime'],
   ['/vehicles', '🚌', 'Xe buýt'],
-  ['/routes', '⌁', 'Tuyến đường'],
+  ['/routes', '⌁', 'Tuyến đường & Duyệt'],
   ['/users', '♙', 'Người dùng'],
   ['/incidents', '⚠', 'Sự cố'],
   ['/reports', '◔', 'Báo cáo'],
@@ -200,20 +218,20 @@ function Dashboard() {
       </Page>
     );
 
-  const s = data.summary;
+  const s = data.summary || {};
   return (
     <Page title="Tổng quan Trung tâm Điều hành">
       <div className="stats">
-        <Stat label="Xe trong hệ thống" value={s.total_vehicles} icon="🚌" />
-        <Stat label="Tuyến đã khởi tạo" value={s.total_routes} icon="⌁" />
-        <Stat label="Sinh viên đã đăng ký" value={s.total_students} icon="♙" />
-        <Stat label="Sự cố cần xử lý" value={s.pending_incidents} icon="⚠" danger={s.pending_incidents > 0} />
+        <Stat label="Xe trong hệ thống" value={s.total_vehicles ?? 0} icon="🚌" />
+        <Stat label="Tuyến đã khởi tạo" value={s.total_routes ?? 0} icon="⌁" />
+        <Stat label="Sinh viên đã đăng ký" value={s.total_students ?? 0} icon="♙" />
+        <Stat label="Sự cố cần xử lý" value={s.pending_incidents ?? 0} icon="⚠" danger={(s.pending_incidents ?? 0) > 0} />
       </div>
 
       <div className="two-col">
         <section className="panel">
           <h2>
-            Trạng thái vận hành chung <span className="ok">● {data.system_status}</span>
+            Trạng thái vận hành chung <span className="ok">● {data.system_status || 'ONLINE'}</span>
           </h2>
           <p>
             Đội xe buýt Đại học Cần Thơ đang hoạt động theo đúng lịch trình. Sử dụng mục <b>Bản đồ Realtime</b> để theo dõi chính xác vị trí GPS từng xe.
@@ -229,9 +247,9 @@ function Dashboard() {
           <h2>Tác vụ quản trị nhanh</h2>
           <ul style={{ paddingLeft: 18, margin: 0, color: '#486069', fontSize: 14, lineHeight: 1.8 }}>
             <li>Thêm/Phân công tài xế cho xe</li>
-            <li>Tạo tuyến chạy tự động cho ngày mới</li>
+            <li>Tạo tuyến chạy tự động & Duyệt lộ trình</li>
             <li>Duyệt sự cố do tài xế gửi lên</li>
-            <li>Quản lý phân quyền tài khoản</li>
+            <li>Quản lý phân quyền tài khoản (Sinh viên, Tài xế, Admin)</li>
           </ul>
         </section>
       </div>
@@ -252,36 +270,15 @@ function Stat({ label, value, icon, danger }: any) {
 function RealtimeMapPage() {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMap = useRef<any>(null);
-  const markersRef = useRef<Record<number, any>>({});
+  const markersRef = useRef<Record<string, any>>({});
   const [buses, setBuses] = useState<BusLocation[]>([]);
   const [wsConnected, setWsConnected] = useState(false);
   const [vehiclesList, setVehiclesList] = useState<Vehicle[]>([]);
-
-  // Default CTU Can Tho locations for mock/live buses
-  const defaultBuses: BusLocation[] = [
-    { vehicle_id: 1, license_plate: '65B-123.45', latitude: 10.0305, longitude: 105.7684, speed: 28, status: 'in_progress' },
-    { vehicle_id: 2, license_plate: '65B-678.90', latitude: 10.0271, longitude: 105.772, speed: 32, status: 'in_progress' },
-    { vehicle_id: 3, license_plate: '65B-999.88', latitude: 10.034, longitude: 105.7645, speed: 0, status: 'idle' }
-  ];
 
   useEffect(() => {
     api.get<Vehicle[]>('/vehicles/').then(setVehiclesList).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!mapRef.current || leafletMap.current) return;
-
-    if (window.L) {
-      const map = window.L.map(mapRef.current).setView([10.0305, 105.7684], 15);
-      const goongTileKey = (import.meta as any).env?.VITE_GOONG_MAPTILES_KEY || 'rwZKp27qLAlPcckb3HOe3E4JwiOaR54wPiW9hwJx';
-      window.L.tileLayer(`https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=${goongTileKey}`, {
-        attribution: '&copy; Goong Maps'
-      }).addTo(map);
-      leafletMap.current = map;
-    }
-  }, []);
-
-  // Update map markers when buses update
   const updateMarkers = (locations: BusLocation[]) => {
     if (!leafletMap.current || !window.L) return;
 
@@ -290,7 +287,7 @@ function RealtimeMapPage() {
 
       const popupContent = `
         <div class="bus-popup">
-          <h4>🚌 Xe ${license_plate || `#${vehicle_id}`}</h4>
+          <h4>🚌 Xe ${license_plate || `#${vehicle_id.slice(0, 8)}`}</h4>
           <p>Tốc độ: <b>${speed} km/h</b></p>
           <p>Tọa độ: <code>${latitude.toFixed(4)}, ${longitude.toFixed(4)}</code></p>
           <p>Trạng thái: <span class="bus-status-tag ${status}">${status === 'in_progress' ? 'Đang chạy' : 'Đang chờ'}</span></p>
@@ -309,10 +306,19 @@ function RealtimeMapPage() {
   };
 
   useEffect(() => {
-    setBuses(defaultBuses);
-    updateMarkers(defaultBuses);
+    if (!mapRef.current || leafletMap.current) return;
 
-    // Try WebSocket connection
+    if (window.L) {
+      const map = window.L.map(mapRef.current).setView([10.0305, 105.7684], 15);
+      const goongTileKey = (import.meta as any).env?.VITE_GOONG_MAPTILES_KEY || 'rwZKp27qLAlPcckb3HOe3E4JwiOaR54wPiW9hwJx';
+      window.L.tileLayer(`https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=${goongTileKey}`, {
+        attribution: '&copy; Goong Maps'
+      }).addTo(map);
+      leafletMap.current = map;
+    }
+  }, []);
+
+  useEffect(() => {
     let socket: WebSocket | null = null;
     try {
       socket = new WebSocket(WS_URL);
@@ -361,47 +367,53 @@ function RealtimeMapPage() {
       <div className="live-feed-bar">
         <div>
           <span className="pulse-dot" />
-          Kênh giám sát vị trí GPS trực tiếp {wsConnected ? '(Đã kết nối WebSocket)' : '(Chế độ mô phỏng / REST Polling)'}
+          Kênh giám sát vị trí GPS trực tiếp {wsConnected ? '(Đã kết nối WebSocket)' : '(Chờ kết nối Realtime GPS từ tài xế)'}
         </div>
-        <small style={{ opacity: 0.9 }}>Cập nhật mỗi 2 giây</small>
+        <small style={{ opacity: 0.9 }}>Cập nhật 15s/lần</small>
       </div>
 
       <div className="two-col">
         <div ref={mapRef} className="map-container" />
 
         <section className="panel" style={{ height: 520, overflowY: 'auto' }}>
-          <h2>Danh sách xe buýt ({buses.length})</h2>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {buses.map((bus) => {
-              const matchedVeh = vehiclesList.find((v) => v.id === bus.vehicle_id);
-              return (
-                <article
-                  key={bus.vehicle_id}
-                  onClick={() => centerBus(bus)}
-                  style={{
-                    padding: 12,
-                    borderRadius: 8,
-                    border: '1px solid #e2eaec',
-                    cursor: 'pointer',
-                    background: '#fcfdfe'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <strong style={{ color: '#087b7c' }}>🚌 {bus.license_plate || matchedVeh?.license_plate || `Xe #${bus.vehicle_id}`}</strong>
-                    <span className={`bus-status-tag ${bus.status || 'in_progress'}`}>
-                      {bus.status === 'in_progress' ? 'Đang chạy' : 'Đang dừng'}
-                    </span>
-                  </div>
-                  <small style={{ color: '#65777d', display: 'block', marginTop: 4 }}>
-                    Tài xế: {matchedVeh?.driver?.full_name || matchedVeh?.driver?.username || 'Đang phân công'}
-                  </small>
-                  <small style={{ color: '#087b7c', display: 'block', marginTop: 2 }}>
-                    Tốc độ: {bus.speed ?? 0} km/h • Click để xem vị trí
-                  </small>
-                </article>
-              );
-            })}
-          </div>
+          <h2>Danh sách xe buýt đang phát GPS ({buses.length})</h2>
+          {buses.length === 0 ? (
+            <p style={{ color: '#708187', fontSize: 14 }}>Hiện chưa có xe buýt nào phát GPS trong ca làm việc.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {buses.map((bus) => {
+                const matchedVeh = vehiclesList.find((v) => v.id === bus.vehicle_id);
+                return (
+                  <article
+                    key={bus.vehicle_id}
+                    onClick={() => centerBus(bus)}
+                    style={{
+                      padding: 12,
+                      borderRadius: 8,
+                      border: '1px solid #e2eaec',
+                      cursor: 'pointer',
+                      background: '#fcfdfe'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <strong style={{ color: '#087b7c' }}>
+                        🚌 {bus.license_plate || matchedVeh?.license_plate || `Xe #${bus.vehicle_id.slice(0, 8)}`}
+                      </strong>
+                      <span className={`bus-status-tag ${bus.status || 'in_progress'}`}>
+                        {bus.status === 'in_progress' ? 'Đang chạy' : 'Đang dừng'}
+                      </span>
+                    </div>
+                    <small style={{ color: '#65777d', display: 'block', marginTop: 4 }}>
+                      Tài xế: {matchedVeh?.driver?.full_name || matchedVeh?.driver?.username || 'Đang phân công'}
+                    </small>
+                    <small style={{ color: '#087b7c', display: 'block', marginTop: 2 }}>
+                      Tốc độ: {bus.speed ?? 0} km/h • Click để xem vị trí trên bản đồ
+                    </small>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
       </div>
     </Page>
@@ -434,10 +446,9 @@ function Vehicles() {
     }
   };
 
-  const assignDriver = async (vehicleId: number, driverId: string) => {
+  const assignDriver = async (vehicleId: string, driverId: string) => {
     try {
-      const dId = driverId ? Number(driverId) : null;
-      await api.put(`/vehicles/${vehicleId}/driver?driver_id=${dId ?? ''}`);
+      await api.put(`/vehicles/${vehicleId}/driver?driver_id=${driverId || ''}`);
       void load();
     } catch (e) {
       setError((e as Error).message);
@@ -479,7 +490,7 @@ function Vehicles() {
                 <option value="">-- Chưa gán tài xế --</option>
                 {drivers.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.full_name || d.username} (ID #{d.id})
+                    {d.full_name || d.username}
                   </option>
                 ))}
               </select>
@@ -514,7 +525,7 @@ function Users() {
     void load();
   }, []);
 
-  const changeRole = async (userId: number, newRole: string) => {
+  const changeRole = async (userId: string, newRole: string) => {
     try {
       await api.put(`/users/${userId}/role`, { role: newRole });
       void load();
@@ -531,28 +542,29 @@ function Users() {
         <span>Lọc theo vai trò:</span>
         <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
           <option value="all">Tất cả người dùng ({items.length})</option>
-          <option value="student">Sinh viên ({items.filter((u) => u.role === 'student').length})</option>
+          <option value="student">Sinh viên ({items.filter((u) => u.role === 'student' || u.role === 'passenger').length})</option>
           <option value="driver">Tài xế ({items.filter((u) => u.role === 'driver').length})</option>
           <option value="admin">Quản trị viên ({items.filter((u) => u.role === 'admin').length})</option>
         </select>
       </div>
 
       <Table
-        heads={['ID', 'Tài khoản', 'Họ tên', 'Điện thoại', 'Vai trò hiện tại', 'Thay đổi vai trò']}
+        heads={['Tài khoản', 'Họ tên', 'Điện thoại', 'Vai trò hiện tại', 'Thay đổi vai trò']}
         rows={filtered.map((u) => (
           <tr key={u.id}>
-            <td>#{u.id}</td>
             <td>
               <b>{u.username}</b>
             </td>
             <td>{u.full_name || '—'}</td>
             <td>{u.phone || '—'}</td>
             <td>
-              <span className={`badge ${u.role}`}>{u.role === 'student' ? 'Sinh viên' : u.role === 'driver' ? 'Tài xế' : 'Quản trị viên'}</span>
+              <span className={`badge ${u.role}`}>
+                {u.role === 'student' || u.role === 'passenger' ? 'Sinh viên' : u.role === 'driver' ? 'Tài xế' : 'Quản trị viên'}
+              </span>
             </td>
             <td>
               <select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)} style={{ padding: '4px 8px', fontSize: 13 }}>
-                <option value="student">Sinh viên</option>
+                <option value="passenger">Sinh viên</option>
                 <option value="driver">Tài xế</option>
                 <option value="admin">Admin</option>
               </select>
@@ -575,15 +587,14 @@ function Incidents() {
   return (
     <Page title="Quản lý & Xử lý Sự cố">
       <Table
-        heads={['ID', 'Tiêu đề sự cố', 'Mô tả chi tiết', 'Tài xế báo cáo', 'Thời gian', 'Trạng thái', 'Thao tác']}
+        heads={['Tiêu đề sự cố', 'Mô tả chi tiết', 'Tài xế báo cáo', 'Thời gian', 'Trạng thái', 'Thao tác']}
         rows={items.map((i) => (
           <tr key={i.id}>
-            <td>#{i.id}</td>
             <td>
               <b>{i.title}</b>
             </td>
             <td>{i.description || 'Không có chi tiết'}</td>
-            <td>{i.driver?.full_name || i.driver?.username || `ID #${i.driver?.id || '—'}`}</td>
+            <td>{i.driver?.full_name || i.driver?.username || '—'}</td>
             <td>{new Date(i.reported_at).toLocaleString('vi-VN')}</td>
             <td>
               <span className={`badge ${i.status === 'resolved' ? '' : 'admin'}`}>{i.status === 'resolved' ? 'Đã giải quyết' : 'Chờ xử lý'}</span>
@@ -608,30 +619,284 @@ function Incidents() {
 }
 
 function RouteGenerator() {
-  const [message, setMessage] = useState('');
-  const submit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
+  const [locations, setLocations] = useState<LocationItem[]>([]);
+  const [routes, setRoutes] = useState<RouteItem[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(true);
+  const [jobStatus, setJobStatus] = useState<{ id: string; status: string; message?: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [selectedRouteForStops, setSelectedRouteForStops] = useState<RouteItem | null>(null);
+
+  const loadLocations = async () => {
     try {
-      const r: any = await api.post('/routes/generate', { date: f.get('date'), depot_location_id: Number(f.get('depot')) });
-      setMessage(`Đã tạo tác vụ #${r.job_id}. Thuật toán Sweep + Tabu Search đang tự động phân bổ tuyến buýt.`);
-    } catch (e) {
-      setMessage((e as Error).message);
+      const locs = await api.get<LocationItem[]>('/locations/');
+      setLocations(locs);
+    } catch (_) {
+    } finally {
+      setLoadingLocations(false);
     }
   };
 
+  const loadRoutes = async () => {
+    try {
+      const r = await api.get<RouteItem[]>('/routes/');
+      setRoutes(r);
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    void loadLocations();
+    void loadRoutes();
+  }, []);
+
+  const pollJobStatus = async (jobId: string) => {
+    try {
+      const job = await api.get<{ job_id: string; status: string; error_message?: string }>(`/routes/jobs/${jobId}`);
+      setJobStatus({ id: jobId, status: job.status, message: job.error_message });
+      if (job.status === 'QUEUED' || job.status === 'RUNNING') {
+        setTimeout(() => pollJobStatus(jobId), 2000);
+      } else {
+        setSubmitting(false);
+        if (job.status === 'SUCCEEDED') {
+          void loadRoutes();
+        }
+      }
+    } catch (e) {
+      setJobStatus({ id: jobId, status: 'FAILED', message: (e as Error).message });
+      setSubmitting(false);
+    }
+  };
+
+  const submitGenerate = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setJobStatus(null);
+    const f = new FormData(e.currentTarget);
+    const payload = {
+      service_date: String(f.get('service_date')),
+      session_id: String(f.get('session_id')),
+      trip_type: String(f.get('trip_type')),
+      depot_location_id: String(f.get('depot_location_id'))
+    };
+
+    try {
+      const res = await api.post<{ job_id: string; status: string }>('/routes/admin/generate', payload);
+      setJobStatus({ id: res.job_id, status: res.status });
+      pollJobStatus(res.job_id);
+    } catch (e) {
+      setJobStatus({ id: '', status: 'FAILED', message: (e as Error).message });
+      setSubmitting(false);
+    }
+  };
+
+  const approveRoute = async (routeId: string) => {
+    try {
+      await api.post(`/routes/${routeId}/approve`);
+      void loadRoutes();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
+  const rejectRoute = async (routeId: string) => {
+    const reason = prompt('Nhập lý do từ chối tuyến buýt này:');
+    if (!reason || !reason.trim()) return;
+    try {
+      await api.post(`/routes/${routeId}/reject`, { reason: reason.trim() });
+      void loadRoutes();
+    } catch (e) {
+      alert((e as Error).message);
+    }
+  };
+
+  const defaultDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
   return (
-    <Page title="Tạo Tuyến buýt Tự động (Sweep + Tabu Search)">
+    <Page title="Tạo Tuyến & Duyệt Lộ trình Xe buýt (Admin)">
       <section className="panel">
-        <h2>Thuật toán Tối ưu Tuyến xe buýt Đưa đón CTU</h2>
-        <p>Chọn trạm xuất phát depot và ngày chạy để tự động lập lịch trình và thứ tự trạm đón cho sinh viên.</p>
-        <form className="inline-form" onSubmit={submit}>
-          <input name="date" type="date" required />
-          <input name="depot" type="number" min="1" defaultValue="1" placeholder="ID trạm depot" required />
-          <button>Khởi tạo Tuyến</button>
+        <h2>Khởi tạo Tác vụ Sinh tuyến Tự động (Sweep + Tabu Search)</h2>
+        <p>Chọn trạm depot xuất phát, ngày chạy, ca làm việc và chiều đi/về để chạy solver phân bổ tuyến buýt.</p>
+
+        <form className="inline-form" onSubmit={submitGenerate} style={{ flexWrap: 'wrap', gap: 12 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 13, gap: 4 }}>
+            Ngày chạy (service_date):
+            <input name="service_date" type="date" defaultValue={defaultDate} required style={{ padding: '6px 10px' }} />
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 13, gap: 4 }}>
+            Ca làm việc:
+            <select name="session_id" required style={{ padding: '6px 10px' }}>
+              <option value="MORNING_1">Ca sáng 1 (MORNING_1)</option>
+              <option value="MORNING_2">Ca sáng 2 (MORNING_2)</option>
+              <option value="NOON_1">Ca trưa 1 (NOON_1)</option>
+              <option value="NOON_2">Ca trưa 2 (NOON_2)</option>
+            </select>
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 13, gap: 4 }}>
+            Chiều di chuyển:
+            <select name="trip_type" required style={{ padding: '6px 10px' }}>
+              <option value="pickup">Đưa đón (pickup)</option>
+              <option value="dropoff">Trả khách (dropoff)</option>
+            </select>
+          </label>
+
+          <label style={{ display: 'flex', flexDirection: 'column', fontSize: 13, gap: 4 }}>
+            Trạm depot xuất phát:
+            <select name="depot_location_id" required disabled={loadingLocations} style={{ padding: '6px 10px', minWidth: 200 }}>
+              {locations.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name} {loc.code ? `(${loc.code})` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <button disabled={submitting}>{submitting ? 'Đang tạo & chạy solver…' : 'Khởi tạo Tuyến'}</button>
+          </div>
         </form>
-        {message && <p className="notice" style={{ marginTop: 15 }}>{message}</p>}
+
+        {jobStatus && (
+          <div
+            className={`notice ${jobStatus.status === 'FAILED' ? 'error' : ''}`}
+            style={{
+              marginTop: 16,
+              padding: 12,
+              borderRadius: 6,
+              background: jobStatus.status === 'SUCCEEDED' ? '#e6f7ed' : jobStatus.status === 'FAILED' ? '#fde8e8' : '#e6f0fa',
+              border: `1px solid ${jobStatus.status === 'SUCCEEDED' ? '#a3e0b8' : jobStatus.status === 'FAILED' ? '#f8b4b4' : '#b3d4fc'}`
+            }}
+          >
+            <strong>Trạng thái tác vụ: {jobStatus.status}</strong>
+            {jobStatus.id && <span style={{ marginLeft: 8, fontSize: 12, color: '#666' }}>(Job ID: {jobStatus.id})</span>}
+            {jobStatus.status === 'RUNNING' && <p style={{ margin: '4px 0 0' }}>Solver đang chạy phân bổ trạm đón và xe buýt...</p>}
+            {jobStatus.status === 'SUCCEEDED' && <p style={{ margin: '4px 0 0', color: '#155724' }}>✓ Sinh tuyến thành công! Danh sách các tuyến xe bên dưới đã được cập nhật.</p>}
+            {jobStatus.status === 'FAILED' && <p style={{ margin: '4px 0 0', color: '#721c24' }}>Lỗi: {jobStatus.message || 'Chạy job thất bại.'}</p>}
+          </div>
+        )}
       </section>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <h2>Danh sách Tuyến buýt & Luồng Duyệt lộ trình ({routes.length})</h2>
+        <Table
+          heads={['Mã / ID Tuyến', 'Ngày chạy', 'Ca / Chiều', 'Xe gán', 'Số SV đón', 'Quãng đường', 'Trạng thái', 'Thao tác duyệt / Manifest']}
+          rows={routes.map((r) => (
+            <tr key={r.id}>
+              <td>
+                <b style={{ color: '#087b7c' }}>CT-{r.id.slice(0, 8).toUpperCase()}</b>
+              </td>
+              <td>{r.service_date}</td>
+              <td>
+                {r.session_id} • {r.trip_type === 'pickup' ? 'Đón' : 'Trả'}
+              </td>
+              <td>{r.vehicle?.license_plate || (r.vehicle_id ? `Xe #${r.vehicle_id.slice(0, 8)}` : 'Chưa gán xe')}</td>
+              <td>{r.passenger_count ?? 0} sinh viên</td>
+              <td>{r.total_distance?.toFixed(1) ?? '0.0'} km</td>
+              <td>
+                <span className={`badge ${r.status}`}>
+                  {r.status === 'pending'
+                    ? 'Chờ duyệt'
+                    : r.status === 'approved'
+                    ? 'Đã duyệt'
+                    : r.status === 'rejected'
+                    ? 'Từ chối'
+                    : r.status === 'in_progress'
+                    ? 'Đang chạy'
+                    : 'Hoàn tất'}
+                </span>
+              </td>
+              <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                <button style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => setSelectedRouteForStops(r)}>
+                  👁 Xem trạm dừng ({r.stops?.length ?? 0})
+                </button>
+                {r.status === 'pending' && (
+                  <>
+                    <button style={{ fontSize: 12, padding: '4px 8px', background: '#087b7c' }} onClick={() => approveRoute(r.id)}>
+                      ✓ Duyệt
+                    </button>
+                    <button className="danger-button" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => rejectRoute(r.id)}>
+                      ✕ Từ chối
+                    </button>
+                  </>
+                )}
+              </td>
+            </tr>
+          ))}
+        />
+      </section>
+
+      {/* Modal / Drawer hiển thị Manifest danh sách trạm dừng */}
+      {selectedRouteForStops && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setSelectedRouteForStops(null)}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 8,
+              padding: 24,
+              maxWidth: 600,
+              width: '90%',
+              maxHeight: '80vh',
+              overflowY: 'auto'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>
+              Lộ trình Chi tiết: Tuyến CT-{selectedRouteForStops.id.slice(0, 8).toUpperCase()} ({selectedRouteForStops.service_date})
+            </h3>
+            <p style={{ color: '#666', fontSize: 13 }}>
+              Xe phụ trách: <b>{selectedRouteForStops.vehicle?.license_plate || 'Chưa phân công'}</b> • Sức chứa:{' '}
+              {selectedRouteForStops.vehicle?.capacity ?? '—'} chỗ • Số sinh viên gán: <b>{selectedRouteForStops.passenger_count ?? 0}</b>
+            </p>
+
+            <table style={{ width: '100%', marginTop: 15, borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
+                  <th style={{ padding: 8 }}>STT</th>
+                  <th style={{ padding: 8 }}>Mã trạm</th>
+                  <th style={{ padding: 8 }}>Tên trạm dừng</th>
+                  <th style={{ padding: 8 }}>Dự kiến đến</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(selectedRouteForStops.stops || [])
+                  .sort((a, b) => a.stop_order - b.stop_order)
+                  .map((stop) => (
+                    <tr key={stop.id} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: 8 }}>#{stop.stop_order}</td>
+                      <td style={{ padding: 8 }}>
+                        <code>{stop.location?.code || stop.location_id.slice(0, 8)}</code>
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        <b>{stop.location?.name || 'Trạm đón'}</b>
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        {stop.arrival_time ? new Date(stop.arrival_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+
+            <div style={{ marginTop: 20, textAlign: 'right' }}>
+              <button onClick={() => setSelectedRouteForStops(null)}>Đóng</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }
