@@ -85,16 +85,32 @@ class _DriverHomeTabState extends State<DriverHomeTab>
         : null;
     final routeId = nextRoute?['id']?.toString() ?? '';
 
-    setState(() => _isShiftActive = !_isShiftActive);
+    final willBeActive = !_isShiftActive;
 
-    if (_isShiftActive) {
+    if (willBeActive) {
+      if (routeId.isNotEmpty) {
+        try {
+          await widget.api.startRoute(routeId);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Không thể bắt đầu chuyến xe: $e'),
+                backgroundColor: Colors.red[800],
+              ),
+            );
+          }
+          return;
+        }
+      }
+      setState(() => _isShiftActive = true);
       final success = await GpsService().startTracking(
         routeId: routeId,
         api: widget.api,
       );
       if (mounted) {
         final msg = success
-            ? 'Đã bắt đầu ca làm việc! Hệ thống đang phát vị trí xe buýt định kỳ 15s/lần.'
+            ? 'Đã bắt đầu ca làm việc! Tuyến xe đang hoạt động và hệ thống phát vị trí định kỳ 15s/lần.'
             : 'Đã bật ca, nhưng vui lòng cấp quyền vị trí để phát GPS xe buýt.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -104,17 +120,26 @@ class _DriverHomeTabState extends State<DriverHomeTab>
         );
       }
     } else {
+      if (routeId.isNotEmpty) {
+        try {
+          await widget.api.endRoute(routeId);
+        } catch (e) {
+          // Continue stopping shift locally
+        }
+      }
       GpsService().stopTracking();
+      setState(() => _isShiftActive = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Đã kết thúc ca làm việc. Đã dừng phát GPS.'),
+            content: const Text('Đã kết thúc ca làm việc và chuyển chuyến xe sang trạng thái hoàn tất.'),
             backgroundColor: Colors.grey[800],
           ),
         );
       }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

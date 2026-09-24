@@ -187,29 +187,8 @@ def verify_ticket_qr(
     """Tài xế quét mã QR trên xe để xác nhận hành khách lên xe."""
     code_str = request.qr_code.strip()
 
-    # 1. Hỗ trợ mã vé mẫu thử nghiệm (Mock Test Tickets cho tài xế demo nhanh)
-    if code_str in ("550e8400-e29b-41d4-a716-446655440000", "8d2f3a4b-9999-4321-8888-abcdef123456"):
-        is_first = code_str == "550e8400-e29b-41d4-a716-446655440000"
-        return TicketVerifyResponse(
-            id=uuid.UUID(code_str),
-            user_id=current_driver.id,
-            route_id=None,
-            service_date=datetime.date.today(),
-            session_id="MORNING_1",
-            trip_type="pickup",
-            pickup_location_id=uuid.uuid4(),
-            qr_code=code_str,
-            status=TicketStatus.USED,
-            created_at=datetime.datetime.now(datetime.timezone.utc),
-            student_name="Lê Văn C (Sinh viên mẫu)" if is_first else "Trần Thị Lan (Sinh viên mẫu)",
-            student_code="B2012345" if is_first else "B2019876",
-            route_name="Tuyến #1 - Khu II → Hòa An",
-        )
-
-    # 2. Tìm kiếm vé trong CSDL theo qr_code trước
+    # 1. Tìm kiếm vé trong CSDL theo qr_code hoặc id (UUID)
     ticket = db.query(Ticket).filter(Ticket.qr_code == code_str).first()
-
-    # 3. Nếu không tìm thấy và code_str là định dạng UUID, tìm tiếp theo ticket.id
     if not ticket:
         try:
             val_uuid = uuid.UUID(code_str)
@@ -223,24 +202,58 @@ def verify_ticket_qr(
             detail="Vé không hợp lệ hoặc không tồn tại trong hệ thống.",
         )
 
+    # 2. Kiểm tra trạng thái vé
     if ticket.status == TicketStatus.USED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Vé này đã được điểm danh trước đó.",
+            detail="Vé này đã được điểm danh sử dụng trước đó.",
         )
 
-    if ticket.status not in (TicketStatus.ASSIGNED, TicketStatus.RESERVED, TicketStatus.PAID_PENDING_ROUTE):
+    if ticket.status in (TicketStatus.RESERVED, TicketStatus.PAID_PENDING_ROUTE):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Vé không ở trạng thái hợp lệ để điểm danh ({ticket.status.value}).",
+            detail="Vé chưa được hệ thống phân bổ vào tuyến buýt cụ thể.",
         )
 
-    student = ticket.user
-    route = ticket.route
+    if ticket.status in (TicketStatus.CANCELLED, TicketStatus.REFUNDED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vé này đã bị hủy hoặc hoàn tiền.",
+        )
 
+    if ticket.status != TicketStatus.ASSIGNED or not ticket.route_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Trạng thái vé không hợp lệ để điểm danh ({ticket.status.value}).",
+        )
+
+    # 3. Kiểm tra thông tin tuyến xe và xe buýt
+    route = ticket.route
+    if not route:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vé chưa có thông tin tuyến xe buýt hợp lệ.",
+        )
+
+    from app.models.route import RouteStatus
+    if route.status == RouteStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tuyến xe này đã hoàn tất chuyến.",
+        )
+
+    # 4. Kiểm tra phân công xe đối với tài xế quét (nếu người quét là Tài xế)
+    if current_driver.role == deps.ProfileRole.DRIVER:
+        if route.vehicle and route.vehicle.driver_id != current_driver.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Vé này thuộc tuyến buýt do tài xế khác phụ trách.",
+            )
+
+    student = ticket.user
     student_name = student.full_name if student else "Hành khách"
     student_code = student.phone if student and student.phone else "B2012345"
-    route_name = f"Tuyến CT-{str(route.id)[:5].upper()}" if route else "Lượt chưa phân tuyến"
+    route_name = f"Tuyến CT-{str(route.id)[:5].upper()}"
 
     ticket.status = TicketStatus.USED
     db.commit()
@@ -251,3 +264,4 @@ def verify_ticket_qr(
     res.student_code = student_code
     res.route_name = route_name
     return res
+

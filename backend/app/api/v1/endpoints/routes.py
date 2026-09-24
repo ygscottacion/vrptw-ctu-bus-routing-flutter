@@ -16,15 +16,18 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.route import Route, RouteStop, RouteStatus
 from app.models.route_job import RouteJob, RouteJobStatus
 from app.schemas.route import (
+    PolylineResponse,
     RouteGenerateRequest,
     RouteJobResponse,
+    RouteRejectRequest,
     RouteResponse,
     RouteStopResponse,
 )
 from app.services.route_worker import run_route_job_worker
+from app.core.timezone import VN_TZ
+
 
 router = APIRouter()
-from app.core.timezone import VN_TZ
 
 
 def _route_job_response(job: RouteJob) -> dict[str, Any]:
@@ -56,16 +59,8 @@ def verify_cron_secret(x_cron_secret: Optional[str] = Header(None, alias="X-Cron
     return x_cron_secret
 
 
-@router.post("/generate", response_model=RouteJobResponse, status_code=status.HTTP_202_ACCEPTED)
-def generate_routes(
-    request_in: RouteGenerateRequest,
-    x_cron_secret: str = Depends(verify_cron_secret),
-    db: Session = Depends(deps.get_db),
-) -> Any:
-    """
-    Endpoint nội bộ dành cho Cron Trigger tạo và chạy Job định tuyến VRPTW.
-    Yêu cầu Header X-Cron-Secret chính xác.
-    """
+def _create_and_run_job(request_in: RouteGenerateRequest, db: Session) -> dict[str, Any]:
+
     # 1. Check cutoff deadline (Job only allowed after 22:00 cutoff on D-1)
     now_vn = datetime.datetime.now(VN_TZ)
     cutoff_dt = datetime.datetime.combine(
@@ -101,7 +96,7 @@ def generate_routes(
     )
 
     if active_job:
-        return active_job
+        return _route_job_response(active_job)
 
     succeeded_job = (
         db.query(RouteJob)
@@ -159,6 +154,48 @@ def generate_routes(
     except Exception:
         db.refresh(job_to_run)
         return _route_job_response(job_to_run)
+
+
+@router.post("/generate", response_model=RouteJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def generate_routes(
+    request_in: RouteGenerateRequest,
+    x_cron_secret: str = Depends(verify_cron_secret),
+    db: Session = Depends(deps.get_db),
+) -> Any:
+    """
+    Endpoint nội bộ dành cho Cron Trigger tạo và chạy Job định tuyến VRPTW.
+    Yêu cầu Header X-Cron-Secret chính xác.
+    """
+    return _create_and_run_job(request_in, db)
+
+
+@router.post("/admin/generate", response_model=RouteJobResponse, status_code=status.HTTP_202_ACCEPTED)
+def generate_routes_admin(
+    request_in: RouteGenerateRequest,
+    current_admin: Profile = Depends(deps.get_current_admin),
+    db: Session = Depends(deps.get_db),
+) -> Any:
+    """
+    Endpoint dành cho Admin sinh tuyến trực tiếp trên Admin Portal (Auth qua JWT Admin).
+    """
+    return _create_and_run_job(request_in, db)
+
+
+@router.get("/jobs/{job_id}", response_model=RouteJobResponse)
+def read_job_status(
+    job_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_profile: Profile = Depends(deps.get_current_profile),
+) -> Any:
+    """Tra cứu trạng thái của tác vụ sinh tuyến theo job_id."""
+    job = db.query(RouteJob).filter(RouteJob.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy thông tin job.",
+        )
+    return _route_job_response(job)
+
 
 
 @router.get("", response_model=List[RouteResponse])
@@ -455,4 +492,130 @@ def get_route_polyline(
         )
 
     return goong_direction_service.get_route_polyline(parsed_pts)
+
+
+@router.patch("/{route_id}/start", response_model=RouteResponse)
+def start_route(
+    route_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_driver: Profile = Depends(deps.get_current_driver),
+) -> Any:
+    """Tài xế bắt đầu thực hiện chuyến xe (Chỉ chủ xe hoặc Admin mới có quyền)."""
+    route = (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
+
+    if current_driver.role == ProfileRole.DRIVER:
+        if not route.vehicle_id or not route.vehicle or route.vehicle.driver_id != current_driver.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bạn không có quyền bắt đầu tuyến xe này (chỉ tài xế phụ trách phương tiện mới có quyền).",
+            )
+
+    if route.status == RouteStatus.IN_PROGRESS:
+        return route
+    if route.status == RouteStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tuyến xe này đã hoàn tất chuyến trước đó.",
+        )
+
+    route.status = RouteStatus.IN_PROGRESS
+    db.commit()
+    db.refresh(route)
+    return route
+
+
+@router.patch("/{route_id}/end", response_model=RouteResponse)
+def end_route(
+    route_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_driver: Profile = Depends(deps.get_current_driver),
+) -> Any:
+    """Tài xế kết thúc chuyến xe (Chỉ chủ xe hoặc Admin mới có quyền)."""
+    route = (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
+
+    if current_driver.role == ProfileRole.DRIVER:
+        if not route.vehicle_id or not route.vehicle or route.vehicle.driver_id != current_driver.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bạn không có quyền kết thúc tuyến xe này.",
+            )
+
+    if route.status == RouteStatus.COMPLETED:
+        return route
+    if route.status in (RouteStatus.PENDING, RouteStatus.APPROVED):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tuyến xe chưa được bắt đầu.",
+        )
+
+    route.status = RouteStatus.COMPLETED
+    db.commit()
+    db.refresh(route)
+    return route
+
+
+@router.post("/{route_id}/approve", response_model=RouteResponse)
+def approve_route(
+    route_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_admin: Profile = Depends(deps.get_current_admin),
+) -> Any:
+    """Admin duyệt lộ trình tuyến buýt."""
+    route = (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
+
+    route.status = RouteStatus.APPROVED
+    route.approved_by = current_admin.id
+    route.approved_at = datetime.datetime.now(VN_TZ)
+    route.rejection_reason = None
+    db.commit()
+    db.refresh(route)
+    return route
+
+
+@router.post("/{route_id}/reject", response_model=RouteResponse)
+def reject_route(
+    route_id: uuid.UUID,
+    reject_in: RouteRejectRequest,
+    db: Session = Depends(deps.get_db),
+    current_admin: Profile = Depends(deps.get_current_admin),
+) -> Any:
+    """Admin từ chối lộ trình tuyến buýt (ghi lý do)."""
+    route = (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
+
+    route.status = RouteStatus.REJECTED
+    route.approved_by = current_admin.id
+    route.approved_at = datetime.datetime.now(VN_TZ)
+    route.rejection_reason = reject_in.reason
+    db.commit()
+    db.refresh(route)
+    return route
+
 

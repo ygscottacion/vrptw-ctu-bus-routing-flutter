@@ -8,6 +8,8 @@ from app.core.database import Base
 
 class RouteStatus(str, enum.Enum):
     PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
 
@@ -31,6 +33,10 @@ class Route(Base):
         nullable=False,
     )
     total_distance = Column(Float, default=0.0)
+    approved_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    rejection_reason = Column(String(255), nullable=True)
+
 
     # Relationships
     vehicle = relationship("Vehicle")
