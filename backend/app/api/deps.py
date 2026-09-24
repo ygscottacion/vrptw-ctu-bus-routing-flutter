@@ -168,6 +168,10 @@ def get_current_profile(
             db.add(profile)
             db.commit()
             db.refresh(profile)
+
+            # Auto-create wallet with 200,000 VNĐ for new account
+            from app.services.wallet_service import create_wallet_for_new_account
+            create_wallet_for_new_account(db, profile.id)
         except Exception:
             db.rollback()
             profile = db.query(Profile).filter(Profile.id == user_id).first()

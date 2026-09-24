@@ -8,10 +8,12 @@ from app.core.database import Base
 
 
 class TicketStatus(str, enum.Enum):
+    PAID_PENDING_ROUTE = "paid_pending_route"
     RESERVED = "reserved"
     ASSIGNED = "assigned"
     USED = "used"
     CANCELLED = "cancelled"
+    REFUNDED = "refunded"
     EXPIRED = "expired"
 
 
@@ -32,7 +34,7 @@ class Ticket(Base):
             name="ticket_status",
             values_callable=lambda obj: [e.value for e in obj],
         ),
-        default=TicketStatus.RESERVED,
+        default=TicketStatus.PAID_PENDING_ROUTE,
         nullable=False,
     )
     created_at = Column(

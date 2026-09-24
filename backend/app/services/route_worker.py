@@ -91,8 +91,6 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
     assigned_ids: set[str] = set()
     actual_stops = 0
     for route, stops, tickets in created_routes:
-        if len(stops) != len(tickets) + 1:
-            raise RouteStopValidationError(job_id, f"Route {route.id} has {len(stops)} stops for {len(tickets)} tickets.", "ROUTE_STOP_COUNT_MISMATCH")
         if not stops or str(stops[0].location_id) != str(depot_location_id) or stops[0].stop_order != 1:
             raise RouteStopValidationError(job_id, f"Route {route.id} has no valid depot at stop 1.")
         if any(stop.stop_order != index + 1 for index, stop in enumerate(stops)):
@@ -101,8 +99,8 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
         ticket_location_ids = [str(ticket.pickup_location_id) for ticket in tickets]
         if len(pickup_ids) != len(set(pickup_ids)):
             raise RouteStopValidationError(job_id, f"Route {route.id} has duplicate pickup UUIDs.")
-        if set(pickup_ids) != set(ticket_location_ids) or len(ticket_location_ids) != len(set(ticket_location_ids)):
-            raise RouteStopValidationError(job_id, f"Route {route.id} stops and tickets are not one-to-one.", "ROUTE_STOP_COUNT_MISMATCH")
+        if set(pickup_ids) != set(ticket_location_ids):
+            raise RouteStopValidationError(job_id, f"Route {route.id} stops and tickets locations mismatch.", "ROUTE_STOP_COUNT_MISMATCH")
         if any(ticket.status != TicketStatus.ASSIGNED or ticket.route is not route for ticket in tickets):
             raise RouteStopValidationError(job_id, f"Route {route.id} contains an unassigned ticket.")
         if route.passenger_count != len(tickets):
@@ -111,8 +109,6 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
         assigned_ids.update(str(ticket.id) for ticket in tickets)
     if len(assigned_ids) != expected_tickets_count:
         raise RouteStopValidationError(job_id, f"Assigned {len(assigned_ids)} of {expected_tickets_count} tickets.", "ROUTE_STOP_COUNT_MISMATCH")
-    if actual_stops != expected_tickets_count + len(created_routes):
-        raise RouteStopValidationError(job_id, "Total stop count does not equal depot + assigned tickets.", "ROUTE_STOP_COUNT_MISMATCH")
 
 
 def _record_failed_job(db: Session, job_id: uuid.UUID, error_code: str, message: str, stack_trace: str) -> None:
@@ -148,9 +144,14 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
             depot = db.query(Location).filter(Location.id == _db_id(db, depot_id)).one_or_none()
             if not depot:
                 raise ValueError(f"Depot {job.depot_location_id} does not exist.")
-            tickets = db.query(Ticket).filter(Ticket.service_date == job.service_date, Ticket.session_id == job.session_id, Ticket.trip_type == job.trip_type, Ticket.status == TicketStatus.RESERVED).with_for_update().all()
+            tickets = db.query(Ticket).filter(
+                Ticket.service_date == job.service_date,
+                Ticket.session_id == job.session_id,
+                Ticket.trip_type == job.trip_type,
+                Ticket.status.in_([TicketStatus.PAID_PENDING_ROUTE, TicketStatus.RESERVED])
+            ).with_for_update().all()
             if not tickets:
-                raise RouteStopValidationError(job_id_str, "No RESERVED tickets found.", "DATABASE_WRITE_FAILED")
+                raise RouteStopValidationError(job_id_str, "No PAID_PENDING_ROUTE or RESERVED tickets found.", "DATABASE_WRITE_FAILED")
 
             from app.services.student_routing import config as routing_config
             if len(tickets) > routing_config.MAX_BOOKINGS_PER_JOB:
@@ -166,9 +167,15 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
             location_dicts: List[Dict[str, Any]] = []
             for index, location in enumerate(locations):
                 demand = len(tickets_by_location[str(location.id)])
-                if demand != 1:
-                    raise RouteStopValidationError(job_id_str, f"Pickup {location.id} has {demand} tickets but RouteStop is one-to-one.", "ROUTE_STOP_COUNT_MISMATCH")
-                location_dicts.append({"id": f"location_{index}", "name": location.name, "latitude": location.latitude, "longitude": location.longitude, "demand": demand, "time_window_start": location.time_window_start.strftime("%H:%M") if location.time_window_start else "06:00", "time_window_end": location.time_window_end.strftime("%H:%M") if location.time_window_end else "07:30"})
+                location_dicts.append({
+                    "id": f"location_{index}",
+                    "name": location.name,
+                    "latitude": location.latitude,
+                    "longitude": location.longitude,
+                    "demand": demand,
+                    "time_window_start": location.time_window_start.strftime("%H:%M") if location.time_window_start else "06:00",
+                    "time_window_end": location.time_window_end.strftime("%H:%M") if location.time_window_end else "07:30"
+                })
             uuid_lookup = _build_uuid_lookup(depot_id, locations, location_dicts)
 
             vehicles = db.query(Vehicle).all()
@@ -201,13 +208,20 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                 except (TypeError, ValueError) as exc:
                     raise ValueError(f"Solver returned invalid vehicle UUID {vehicle_id!r}") from exc
                 route_id = uuid.uuid4()
-                route = Route(id=_db_id(db, route_id), route_job_id=job_db_id, service_date=job.service_date, session_id=job.session_id, trip_type=job.trip_type, vehicle_id=_db_id(db, vehicle_id) if vehicle_id else None, status=RouteStatus.PENDING, total_distance=float(route_info.get("total_distance_km", 0.0)))
+                route = Route(
+                    id=_db_id(db, route_id),
+                    route_job_id=job_db_id,
+                    service_date=job.service_date,
+                    session_id=job.session_id,
+                    trip_type=job.trip_type,
+                    vehicle_id=_db_id(db, vehicle_id) if vehicle_id else None,
+                    status=RouteStatus.PENDING,
+                    total_distance=float(route_info.get("total_distance_km", 0.0))
+                )
                 db.add(route)
                 raw_stops = list(route_info.get("ordered_stops") or [])
                 if not raw_stops or str(raw_stops[0].get("id")) not in {"depot", "SCHOOL"}:
                     raw_stops.insert(0, {"id": "depot", "arrival_time": "06:00"})
-                # Solver may include SCHOOL again as a return leg. RouteStop is
-                # the passenger pickup manifest, so persist exactly one depot.
                 raw_stops = [stop for index, stop in enumerate(raw_stops) if index == 0 or str(stop.get("id")) not in {"depot", "SCHOOL"}]
                 route_stops: List[RouteStop] = []
                 route_tickets: List[Ticket] = []
@@ -216,19 +230,33 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                         raise RouteStopValidationError(job_id_str, f"Solver stop is missing id: {stop_data!r}")
                     node_key = str(stop_data["id"])
                     location_id = _lookup_solver_node(uuid_lookup, node_key, job_id_str)
-                    route_stop = RouteStop(id=_db_id(db, uuid.uuid4()), route_id=route.id, location_id=_db_id(db, location_id), stop_order=stop_order, arrival_time=_parse_solver_time(stop_data.get("arrival_time"), job.service_date))
+                    route_stop = RouteStop(
+                        id=_db_id(db, uuid.uuid4()),
+                        route_id=route.id,
+                        location_id=_db_id(db, location_id),
+                        stop_order=stop_order,
+                        arrival_time=_parse_solver_time(stop_data.get("arrival_time"), job.service_date)
+                    )
                     db.add(route_stop)
                     route_stops.append(route_stop)
                     if node_key not in {"depot", "SCHOOL"}:
-                        matching = tickets_by_location.get(str(location_id), [])
-                        if len(matching) != 1 or str(matching[0].id) in assigned_ids:
-                            raise RouteStopValidationError(job_id_str, f"Node {node_key!r} maps to an invalid or duplicate ticket.")
-                        ticket = matching[0]
-                        ticket.route, ticket.status = route, TicketStatus.ASSIGNED
-                        route_tickets.append(ticket)
-                        assigned_ids.add(str(ticket.id))
+                        matching_tickets = tickets_by_location.get(str(location_id), [])
+                        for t in matching_tickets:
+                            if str(t.id) in assigned_ids:
+                                raise RouteStopValidationError(job_id_str, f"Ticket {t.id} assigned multiple times.")
+                            t.route = route
+                            t.status = TicketStatus.ASSIGNED
+                            route_tickets.append(t)
+                            assigned_ids.add(str(t.id))
                 created_routes.append((route, route_stops, route_tickets))
-            _validate_route_and_stops(job_id_str, created_routes, len(tickets), str(depot.id))
+
+            # Step 6: Refund any tickets that could not be assigned to a route
+            from app.services.wallet_service import refund_ticket
+            unassigned_tickets = [t for t in tickets if str(t.id) not in assigned_ids]
+            for unassigned_t in unassigned_tickets:
+                refund_ticket(db, unassigned_t.id, reason="route_worker_failed")
+
+            _validate_route_and_stops(job_id_str, created_routes, len(assigned_ids), str(depot.id))
             job.status, job.error_message = RouteJobStatus.SUCCEEDED, None
             job.updated_at = datetime.datetime.now(datetime.timezone.utc)
         logger.info("Route job %s succeeded with %s routes and %s tickets.", job_id, len(created_routes), len(tickets))

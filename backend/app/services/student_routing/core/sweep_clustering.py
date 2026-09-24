@@ -82,8 +82,8 @@ class SweepClusterer:
                 if vehicle_idx < len(vehicles):
                     current_capacity = vehicles[vehicle_idx].get("capacity", config.VEHICLE_CAPACITY)
                 else:
-                    # Nếu hết xe, tạo thêm route cho xe dư hoặc sử dụng xe cuối
-                    current_capacity = config.VEHICLE_CAPACITY
+                    # R4 & R3: Không còn xe khả dụng -> Ném ngoại lệ INSUFFICIENT_VEHICLES
+                    raise RuntimeError("INSUFFICIENT_VEHICLES")
 
                 current_route = []
                 current_demand = 0
@@ -93,5 +93,8 @@ class SweepClusterer:
 
         if current_route:
             routes.append(current_route)
+
+        if len(routes) > len(vehicles):
+            raise RuntimeError("INSUFFICIENT_VEHICLES")
 
         return routes

@@ -172,11 +172,19 @@ class StudentRoutingService:
         vehicle_dicts = [{"id": v.id, "capacity": v.capacity} for v in vehicles]
 
         # ── 4. Initial Solution via Sweep Algorithm ───────────────────────────
-        initial_routes = self.sweep_clusterer.create_initial_routes(
-            depot=depot_dict,
-            stations=station_dicts,
-            vehicles=vehicle_dicts
-        )
+        try:
+            initial_routes = self.sweep_clusterer.create_initial_routes(
+                depot=depot_dict,
+                stations=station_dicts,
+                vehicles=vehicle_dicts
+            )
+        except RuntimeError as exc:
+            if "INSUFFICIENT_VEHICLES" in str(exc):
+                return self.response_formatter.format_error(
+                    options.session_id, options.trip_type, "INSUFFICIENT_VEHICLES",
+                    f"Số lượng xe khả dụng ({len(vehicles)}) không đủ để phục vụ tất cả các trạm"
+                )
+            raise
 
         # Departure time calculation
         session_info = config.PICKUP_SESSIONS.get(options.session_id.value, {})

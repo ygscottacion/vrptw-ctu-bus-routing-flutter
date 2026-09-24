@@ -19,6 +19,7 @@ from app.models.booking import Booking
 from app.models.incident import Incident
 from app.models.ticket import Ticket
 from app.models.profile import Profile
+from app.models.wallet import Wallet, WalletTransaction
 
 config = context.config
 

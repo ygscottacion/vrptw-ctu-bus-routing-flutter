@@ -71,8 +71,8 @@ class SweepClusteringService:
                 vehicle_index += 1
 
                 if vehicle_index >= len(vehicles):
-                    # Hết xe buýt có sẵn -> gán vào xe cuối cùng hoặc xử lý ngoại lệ
-                    current_cluster = clusters[-1]
+                    # R4: Hết xe buýt có sẵn -> ném ngoại lệ INSUFFICIENT_VEHICLES
+                    raise RuntimeError("INSUFFICIENT_VEHICLES")
                 else:
                     current_vehicle = vehicles[vehicle_index]
                     current_cluster = {
@@ -87,5 +87,8 @@ class SweepClusteringService:
 
         if current_cluster["stops"] and current_cluster not in clusters:
             clusters.append(current_cluster)
+
+        if len(clusters) > len(vehicles):
+            raise RuntimeError("INSUFFICIENT_VEHICLES")
 
         return clusters
