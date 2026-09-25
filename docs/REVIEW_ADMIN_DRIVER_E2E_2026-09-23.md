@@ -1,5 +1,7 @@
 # Rà soát sẵn sàng kiểm thử Admin → Sinh tuyến → Tài xế
 
+> **Lưu ý:** Đây là snapshot của vòng rà soát 2026-09-23 và đã cũ sau các thay đổi trong repo. Kết quả vòng rà soát mới nhất và kịch bản giao QA nằm tại [QA_KICH_BAN_ADMIN_USER_DRIVER_2026-09-24.md](QA_KICH_BAN_ADMIN_USER_DRIVER_2026-09-24.md). Không dùng các phát hiện/trạng thái dưới đây làm kết luận hiện tại.
+
 **Ngày rà soát:** 2026-09-23  
 **Phạm vi:** Admin web, backend routing/route, app tài xế, hợp đồng sinh tuyến và matrix QA hiện có.  
 **Kết luận:** Chưa nên giao team chạy nghiệm thu E2E theo cách hiểu mọi luồng đã sẵn sàng. Có lỗi tích hợp chặn luồng chính và một lỗi phân quyền cần xử lý trước khi dùng dữ liệu thật. Đây là review và kịch bản; không chỉnh sửa hành vi ứng dụng.
@@ -124,4 +126,3 @@ Chuẩn bị tối thiểu:
 6. Chạy lại các case cũ trên đúng build; cập nhật PASS chỉ khi có evidence và trạng thái backend xác nhận.
 
 **Quy tắc kết quả:** `PASS` chỉ khi có evidence UI + API/DB phù hợp; `FAIL` khi lệch expected; `BLOCKED` khi thiếu endpoint/luồng hoặc môi trường không đáp ứng; `NOT RUN` khi chưa thực hiện. Không kế thừa PASS từ report cũ sang build mới.
-
