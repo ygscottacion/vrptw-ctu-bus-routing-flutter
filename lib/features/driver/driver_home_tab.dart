@@ -43,6 +43,8 @@ class _DriverHomeTabState extends State<DriverHomeTab>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
+    _isShiftActive = GpsService().isTracking;
+
     _loadDriverRoutes();
   }
 

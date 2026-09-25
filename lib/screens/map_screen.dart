@@ -260,6 +260,7 @@ class _MapScreenState extends State<MapScreen> {
       children: [
         TileLayer(
           urlTemplate: ApiConfig.goongTileUrl,
+          fallbackUrl: ApiConfig.fallbackTileUrl,
           userAgentPackageName: 'com.ctu.myctubus_flutter',
         ),
         // Route polylines

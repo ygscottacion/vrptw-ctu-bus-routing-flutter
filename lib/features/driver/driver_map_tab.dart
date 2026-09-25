@@ -241,6 +241,11 @@ class _DriverMapTabState extends State<DriverMapTab>
       final updatedRoute = wasInProgress
           ? await widget.api.endRoute(routeId)
           : await widget.api.startRoute(routeId);
+      if (wasInProgress) {
+        GpsService().stopTracking();
+      } else {
+        GpsService().startTracking(routeId: routeId, api: widget.api);
+      }
       if (mounted) {
         setState(() {
           _route = updatedRoute;
@@ -294,6 +299,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                       children: [
                         TileLayer(
                             urlTemplate: ApiConfig.goongTileUrl,
+                            fallbackUrl: ApiConfig.fallbackTileUrl,
                             userAgentPackageName: 'com.ctu.myctubus'),
                         if (_stops.length > 1)
                           PolylineLayer(polylines: [
@@ -380,8 +386,8 @@ class _DriverMapTabState extends State<DriverMapTab>
       ? 'Tuyến đã tối ưu'
       : '${_stops.first.name} - ${_stops.last.name}';
   Widget _panel() => DraggableScrollableSheet(
-      initialChildSize: .50,
-      minChildSize: .24,
+      initialChildSize: .25,
+      minChildSize: .14,
       maxChildSize: .86,
       builder: (_, scroll) => Container(
             decoration: const BoxDecoration(
@@ -397,11 +403,11 @@ class _DriverMapTabState extends State<DriverMapTab>
                       color: const Color(0xFFFFD4C9),
                       borderRadius: BorderRadius.circular(3))),
               Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 9),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
                   child: Row(children: [
                     Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 5),
+                            horizontal: 7, vertical: 4),
                         decoration: BoxDecoration(
                             color: const Color(0xFFE7F5EF),
                             borderRadius: BorderRadius.circular(5)),
@@ -409,11 +415,12 @@ class _DriverMapTabState extends State<DriverMapTab>
                             style: const TextStyle(
                                 color: Color(0xFF07835A),
                                 fontWeight: FontWeight.w800,
-                                fontSize: 16))),
+                                fontSize: 15))),
                     const SizedBox(width: 7),
                     Expanded(
                         child: Text(_title,
                             maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                                 fontSize: 12, fontWeight: FontWeight.w600))),
                     _chip(),
@@ -429,11 +436,13 @@ class _DriverMapTabState extends State<DriverMapTab>
                     Tab(text: 'Thông tin')
                   ]),
               Expanded(
-                  child: TabBarView(controller: _tabs, children: [
-                _stopsView(scroll),
-                _hoursView(scroll),
-                _infoView(scroll)
-              ])),
+                  child: ClipRect(
+                child: TabBarView(controller: _tabs, children: [
+                  _stopsView(scroll),
+                  _hoursView(scroll),
+                  _infoView(scroll)
+                ]),
+              )),
             ]),
           ));
   Widget _chip() {

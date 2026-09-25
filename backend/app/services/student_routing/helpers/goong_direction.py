@@ -163,7 +163,36 @@ class GoongDirectionService:
         latency = (time.time() - start_time) * 1000.0
         goong_metrics.log_goong_call("direction", summary_str, latency, status_code, cache_hit=False, error=error_msg)
 
-        # Fallback if API fails
+        # Fallback to OSRM if Goong API fails
+        try:
+            osrm_coords = ";".join([f"{lng},{lat}" for lat, lng in waypoints])
+            osrm_url = f"https://router.project-osrm.org/route/v1/driving/{osrm_coords}?overview=full&geometries=geojson"
+            osrm_req = urllib.request.Request(osrm_url, headers={"User-Agent": "CTUBusRouting/2.0"})
+            with urllib.request.urlopen(osrm_req, timeout=5.0) as osrm_resp:
+                if osrm_resp.status == 200:
+                    osrm_data = json.loads(osrm_resp.read().decode("utf-8"))
+                    osrm_routes = osrm_data.get("routes", [])
+                    if osrm_routes:
+                        route0 = osrm_routes[0]
+                        coords = route0.get("geometry", {}).get("coordinates", [])
+                        pts = [[lat, lng] for lng, lat in coords]
+                        dist_km = round(route0.get("distance", 0.0) / 1000.0, 3)
+                        dur_mins = round(route0.get("duration", 0.0) / 60.0, 2)
+                        fallback_res = {
+                            "encoded_polyline": "",
+                            "distance_km": dist_km,
+                            "duration_minutes": dur_mins,
+                            "points": pts,
+                            "cached": False,
+                            "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+                        }
+                        with self._lock:
+                            self._cache[cache_key] = (fallback_res, now)
+                        return fallback_res
+        except Exception as o_err:
+            logger.warning(f"OSRM fallback failed: {o_err}")
+
+        # Final fallback if both APIs fail
         return {
             "encoded_polyline": "",
             "distance_km": 0.0,
