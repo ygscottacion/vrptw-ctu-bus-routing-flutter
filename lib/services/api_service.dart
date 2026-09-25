@@ -100,11 +100,14 @@ class ApiService {
           .from('routes')
           .select('*, route_stops(*, locations(*)), vehicles(*)');
 
-      final routesRes = vehicleId != null
-          ? await query
-              .eq('vehicle_id', vehicleId)
-              .order('service_date', ascending: false)
-          : await query.order('service_date', ascending: false).limit(2);
+      if (vehicleId == null || vehicleId.isEmpty) {
+        return [];
+      }
+
+      final routesRes = await query
+          .eq('vehicle_id', vehicleId)
+          .order('service_date', ascending: false);
+
 
       if ((routesRes as List).isNotEmpty) {
         final routes = (routesRes as List).map((r) {

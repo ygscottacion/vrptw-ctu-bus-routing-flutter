@@ -161,6 +161,37 @@ class TestStudentRouting(unittest.TestCase):
         # Test small dataset execution
         benchmark.run_single_dataset("TestSmall", num_vehicles=2, num_stations=6, total_students=20, num_runs=1)
 
+    # 16. R4 & R3: Insufficient vehicles error raised when available vehicles count is lower than required routes
+    def test_insufficient_vehicles_error(self):
+        school_cfg = SchoolConfig()
+        vehicles = [Vehicle(id="BUS-01", capacity=10), Vehicle(id="BUS-02", capacity=10)]  # 2 buses, capacity 10 each (total 20)
+        stations = [
+            Station(
+                id="ST-01", name="Trạm 1",
+                location=LocationSchema(lat=10.035, lng=105.775),
+                time_window_start="06:00", time_window_end="06:30",
+                pickup_student_count=6
+            ),
+            Station(
+                id="ST-02", name="Trạm 2",
+                location=LocationSchema(lat=10.038, lng=105.778),
+                time_window_start="06:00", time_window_end="06:30",
+                pickup_student_count=6
+            ),
+            Station(
+                id="ST-03", name="Trạm 3",
+                location=LocationSchema(lat=10.040, lng=105.780),
+                time_window_start="06:00", time_window_end="06:30",
+                pickup_student_count=6
+            ),  # Total 18 students <= 20 capacity, but each route can hold only 1 station (6+6=12 > 10 capacity) -> needs 3 buses, only 2 provided
+        ]
+        options = OptimizationOptions(session_id=SessionId.MORNING_1, trip_type=TripType.PICKUP)
+        response = self.service.optimize_routes(school_cfg, vehicles, stations, options)
+
+        self.assertEqual(response.status, "ERROR")
+        self.assertEqual(response.error_code, "INSUFFICIENT_VEHICLES")
+
 
 if __name__ == "__main__":
     unittest.main()
+

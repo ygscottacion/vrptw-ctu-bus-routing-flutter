@@ -20,6 +20,7 @@ from app.models.incident import Incident
 from app.models.ticket import Ticket
 from app.models.profile import Profile
 from app.models.route_matrix_cache import RouteMatrixCache
+from app.models.wallet import Wallet, WalletTransaction
 
 config = context.config
 
