@@ -116,13 +116,13 @@
 
 ## 🔵 THÀNH VIÊN 2: MINH (DATABASE, VÍ ĐIỆN TỬ & SUPABASE)
 
-### TS-DB-01: Khởi tạo Dữ liệu Seed & Reset Môi trường
+### TS-DB-01: Khởi tạo Dữ liệu Seed & Reset Môi trường - PASS
 - **Mục tiêu:** Đảm bảo Cơ sở dữ liệu Staging ở trạng thái sạch, có đầy đủ data seed trước mỗi đợt E2E.
 - **Tiền điều kiện:** Có quyền truy cập PostgreSQL / Supabase SQL Editor.
 - **Các bước thực hiện:** Chạy script reset DB và nạp seed data chuẩn.
 - **Kết quả mong đợi:** DB chứa 5 Trạm location, 2 Xe buýt (`V1`, `V2`), 2 Tài xế (`D1`, `D2`), 2 Sinh viên (`U1`, `U2`). Mỗi sinh viên có Ví điện tử khởi tạo với số dư `200,000` VNĐ.
 
-### TS-DB-02: Đặt vé & Trừ tiền Ví điện tử (Transaction Atomic)
+### TS-DB-02: Đặt vé & Trừ tiền Ví điện tử (Transaction Atomic) - PASS
 - **Mục tiêu:** Đảm bảo khi sinh viên đặt vé, số dư ví bị trừ đúng 7,000 VNĐ và ghi nhận lịch sử ledger.
 - **Tiền điều kiện:** `U1` có số dư 200,000 VNĐ.
 - **Các bước thực hiện:** `U1` thực hiện đặt 1 vé xe buýt cho ngày D+1 ca `MORNING_1`.
@@ -131,7 +131,7 @@
   - Bảng `wallets`: Số dư `balance` của `U1` giảm chính xác từ 200,000 VNĐ ➔ 193,000 VNĐ.
   - Bảng `wallet_transactions`: Tạo 1 bản ghi giao dịch `type` = `purchase`, `amount` = `-7000`, `balance_after` = `193000`.
 
-### TS-DB-03: Hủy vé & Hoàn tiền Ví điện tử trước Deadline
+### TS-DB-03: Hủy vé & Hoàn tiền Ví điện tử trước Deadline - PASS
 - **Mục tiêu:** Hoàn trả chính xác 7,000 VNĐ vào ví khi sinh viên hủy vé trước 22:00 ICT.
 - **Tiền điều kiện:** `U1` đang có 1 vé trạng thái `paid_pending_route` (Số dư ví 193,000 VNĐ).
 - **Các bước thực hiện:** `U1` thực hiện hủy vé trên ứng dụng.
@@ -140,19 +140,19 @@
   - Bảng `wallets`: Số dư `balance` của `U1` tăng từ 193,000 VNĐ ➔ 200,000 VNĐ.
   - Bảng `wallet_transactions`: Ghi nhận 1 bản ghi `type` = `refund`, `amount` = `+7000`, `balance_after` = `200000`.
 
-### TS-DB-04: Kiểm tra RLS & Cô lập Dữ liệu Người dùng (Data Isolation)
+### TS-DB-04: Kiểm tra RLS & Cô lập Dữ liệu Người dùng (Data Isolation) - PASS
 - **Mục tiêu:** Đảm bảo Row Level Security (RLS) ngăn chặn Sinh viên A xem/sửa ví và vé của Sinh viên B.
 - **Tiền điều kiện:** Tài khoản `U1` (UUID-1) và `U2` (UUID-2) đã có dữ liệu trong DB.
 - **Các bước thực hiện:** Thực thi SQL query giả lập JWT context của `U1` truy vấn bảng `wallets` và `tickets` của `U2`.
 - **Kết quả mong đợi:** Query trả về 0 bản ghi (`Empty Result Set`). RLS Policy deny hoàn toàn việc truy cập cross-user.
 
-### TS-DB-05: Kiểm tra Ràng buộc Trùng lặp (Duplicate Ticket Guard)
+### TS-DB-05: Kiểm tra Ràng buộc Trùng lặp (Duplicate Ticket Guard) - PASS
 - **Mục tiêu:** Ngăn sinh viên đặt 2 vé cho cùng 1 ca chạy trong ngày.
 - **Tiền điều kiện:** `U1` đã có 1 vé đặt cho Ngày D+1, Ca `MORNING_1`, Chiều `pickup`.
 - **Các bước thực hiện:** Cố tình chèn 1 bản ghi ticket thứ 2 với cùng `user_id`, `service_date`, `session_id`, `trip_type`.
 - **Kết quả mong đợi:** Database chặn giao dịch và ném lỗi vi phạm Unique Constraint `uq_tickets_user_run`.
 
-### TS-DB-06: Đối soát Ràng buộc Toàn vẹn (Referential Integrity)
+### TS-DB-06: Đối soát Ràng buộc Toàn vẹn (Referential Integrity) - PASS
 - **Mục tiêu:** Xác minh tính nhất quán giữa các bảng `routes`, `route_stops`, `tickets` và `vehicles` sau solver.
 - **Tiền điều kiện:** Tác vụ sinh tuyến đã hoàn tất.
 - **Các bước thực hiện:** Chạy SQL Query join giữa `routes`, `route_stops` và `tickets`.
