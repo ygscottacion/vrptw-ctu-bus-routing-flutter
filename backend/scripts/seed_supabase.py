@@ -13,7 +13,8 @@ client = create_client(SUPABASE_URL, SERVICE_ROLE_KEY)
 
 STUDENTS = [f"student{i}@test.example.com" for i in range(1, 6)]   # 5 student
 DRIVERS  = [f"driver{i}@test.example.com" for i in range(1, 3)]    # 2 driver
-
+ADMINS   = ["admin1@test.example.com"]                             # 1 admin
+TEST_PASSWORD = os.environ["SEED_TEST_PASSWORD"]
 # Mật khẩu dùng chung cho toàn bộ 7 tài khoản test (5 student + 2 driver).
 # Giá trị THẬT đang dùng trên staging hiện tại: "TestPassword123!"
 # (Xác nhận bằng cách test login qua Supabase Auth API — script chỉ TẠO MỚI
@@ -25,7 +26,6 @@ DRIVERS  = [f"driver{i}@test.example.com" for i in range(1, 3)]    # 2 driver
 # khi chạy script. Giá trị thật lưu trong 1Password/Bitwarden của team,
 # không dán vào chat/commit/log. Muốn đổi mật khẩu cho tài khoản đã tồn tại
 # cần thêm logic gọi update_user_by_id — script hiện tại chưa hỗ trợ.
-TEST_PASSWORD = os.environ["SEED_TEST_PASSWORD"]
 
 def find_or_create_user(email: str) -> str:
     """Tìm theo email trước, không tạo trùng khi chạy lại lần 2."""
@@ -43,20 +43,40 @@ def find_or_create_user(email: str) -> str:
 def main():
     student_ids = [find_or_create_user(e) for e in STUDENTS]
     driver_ids = [find_or_create_user(e) for e in DRIVERS]
-
+    admin_ids = [find_or_create_user(e) for e in ADMINS]
+    
     # Trigger on_auth_user_created đã tạo profile role=passenger cho tất cả.
     # Cập nhật đúng 2 profile driver bằng quyền admin (service role bypass RLS).
     for uid in driver_ids:
         client.table("profiles").update({"role": "driver"}).eq("id", uid).execute()
+    for uid in admin_ids:
+        client.table("profiles").update({"role": "admin"}).eq("id", uid).execute()
 
-    # Upsert vehicle theo license_plate (natural key ổn định)
+    # --- SEED VÍ (WALLETS) ---
+    U1_OPENING_BALANCE = 200_000  # Đủ tiền mua vé
+    U2_OPENING_BALANCE = 5_000    # Thấp hơn giá vé (7,000 VNĐ) để test case USR-04
+
+    wallet_rows = [
+        {"user_id": student_ids[0], "balance": U1_OPENING_BALANCE},
+        {"user_id": student_ids[1], "balance": U2_OPENING_BALANCE},
+    ]
+    # Mặc định các student còn lại có số dư 200,000 VNĐ
+    for s_id in student_ids[2:]:
+        wallet_rows.append({"user_id": s_id, "balance": U1_OPENING_BALANCE})
+
+    client.table("wallets").upsert(
+        wallet_rows, on_conflict="user_id", ignore_duplicates=True
+    ).execute()
+
+    # --- SEED VEHICLES (Gồm V3 chưa gán tài xế) ---
     vehicles = [
         {"license_plate": "51F-000.01", "driver_id": driver_ids[0]},
         {"license_plate": "51F-000.02", "driver_id": driver_ids[1]},
+        {"license_plate": "51F-000.03", "driver_id": None},  # Xe V3 theo QA doc
     ]
     client.table("vehicles").upsert(vehicles, on_conflict="license_plate").execute()
 
-    # Upsert location theo natural key ổn định (code unique nếu tên không đủ ổn định)
+    # --- SEED LOCATIONS ---
     locations = [
         # --- DEPOT CHÍNH (Điểm xuất phát/kết thúc của xe) ---
         {
@@ -90,8 +110,8 @@ def main():
     ]
     client.table("locations").upsert(locations, on_conflict="code").execute()
 
-    print(f"students={len(student_ids)} drivers={len(driver_ids)} "
-          f"vehicles={len(vehicles)} locations={len(locations)}")
+    print(f"students={len(student_ids)} drivers={len(driver_ids)} admins={len(admin_ids)} "
+          f"wallets={len(wallet_rows)} vehicles={len(vehicles)} locations={len(locations)}")
 
 if __name__ == "__main__":
     main()
