@@ -55,6 +55,7 @@ class _DriverShellState extends State<DriverShell> {
       ),
       DriverProfileTab(
         user: widget.user,
+        api: widget.api,
         onLogout: widget.onLogout,
       ),
     ];

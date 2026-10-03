@@ -54,9 +54,10 @@ class ApiService {
       if (response.statusCode == 200) {
         return json.decode(response.body) as List<dynamic>;
       }
-      return [];
-    } catch (_) {
-      return [];
+      throw Exception(
+          'Không thể tải danh sách trạm (${response.statusCode}): ${_message(response)}');
+    } catch (e) {
+      throw Exception('Không thể tải danh sách trạm: $e');
     }
   }
 

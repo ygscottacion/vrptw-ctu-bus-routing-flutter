@@ -41,7 +41,12 @@ class Route(Base):
     # Relationships
     vehicle = relationship("Vehicle")
     route_job = relationship("RouteJob")
-    stops = relationship("RouteStop", back_populates="route", cascade="all, delete-orphan")
+    stops = relationship(
+        "RouteStop",
+        back_populates="route",
+        cascade="all, delete-orphan",
+        order_by="RouteStop.stop_order",
+    )
     tickets = relationship("Ticket", back_populates="route")
 
     @property

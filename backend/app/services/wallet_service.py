@@ -1,7 +1,7 @@
 import logging
 import uuid
 import datetime
-from typing import Optional
+from typing import Optional, Union, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
@@ -9,8 +9,10 @@ from fastapi import HTTPException, status
 from app.models.wallet import Wallet, WalletTransaction, TransactionType
 from app.models.ticket import Ticket, TicketStatus
 from app.models.location import Location
-from app.schemas.ticket import TicketReserveRequest
+from app.models.idempotency_key import IdempotencyKey
+from app.schemas.ticket import TicketReserveRequest, TicketResponse
 from app.api.v1.endpoints.tickets import validate_booking_deadline
+from app.core.idempotency import save_idempotency_key
 
 logger = logging.getLogger(__name__)
 
@@ -33,14 +35,21 @@ def create_wallet_for_new_account(db: Session, user_id: uuid.UUID) -> Wallet:
     return wallet
 
 
-def purchase_ticket(db: Session, user_id: uuid.UUID, ticket_in: TicketReserveRequest) -> Ticket:
+def purchase_ticket(
+    db: Session,
+    user_id: uuid.UUID,
+    ticket_in: TicketReserveRequest,
+    idempotency_key: Optional[str] = None,
+    request_hash: Optional[str] = None,
+    endpoint: str = "/api/v1/tickets/reserve",
+) -> Union[Ticket, IdempotencyKey]:
     """
-    Thực hiện luồng đặt mua vé xe buýt:
+    Thực hiện luồng đặt mua vé xe buýt NGUYÊN TỬ (Atomic Transaction):
     1. Kiểm tra mốc deadline 22:00 giờ VN ngày D-1.
-    2. Kiểm tra trùng lịch mua vé.
-    3. Kiểm tra số dư ví >= 7,000 VNĐ.
-    4. Trừ 7,000 VNĐ, ghi 1 dòng wallet_transactions (type=purchase).
-    5. Tạo vé với status = paid_pending_route.
+    2. Kiểm tra trạm đón hợp lệ.
+    3. Kiểm tra trùng lịch mua vé.
+    4. Khóa hàng ví (with_for_update) & kiểm tra số dư ví >= 7,000 VNĐ.
+    5. Trừ 7,000 VNĐ, tạo vé, ghi 1 dòng wallet_transactions và lưu idempotency_keys trong CÙNG 1 TRANSACTION.
     """
     # 1. Check deadline
     validate_booking_deadline(ticket_in.service_date)
@@ -83,7 +92,7 @@ def purchase_ticket(db: Session, user_id: uuid.UUID, ticket_in: TicketReserveReq
     # 5. Deduct balance & Record purchase
     wallet.balance -= TICKET_PRICE_VND
 
-    qr_code = f"TICKET_{uuid.uuid4().hex[:16].upper()}"
+    qr_code = f"BUS-{uuid.uuid4().hex[:6].upper()}"
     new_ticket = Ticket(
         id=uuid.uuid4(),
         user_id=user_id,
@@ -109,19 +118,48 @@ def purchase_ticket(db: Session, user_id: uuid.UUID, ticket_in: TicketReserveReq
     )
     db.add(tx)
 
+    # 6. Build response dictionary & add Idempotency Record to same transaction if key provided
+    if idempotency_key and request_hash:
+        response_schema = TicketResponse.model_validate(new_ticket)
+        response_dict = response_schema.model_dump(mode="json")
+        save_idempotency_key(
+            db=db,
+            user_id=user_id,
+            endpoint=endpoint,
+            key=idempotency_key,
+            request_hash=request_hash,
+            response_code=status.HTTP_201_CREATED,
+            response_body=response_dict,
+        )
+
     try:
         db.commit()
         db.refresh(new_ticket)
         return new_ticket
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
+        # If atomic commit failed due to race condition with same idempotency key, query existing key
+        if idempotency_key:
+            existing_idem = db.query(IdempotencyKey).filter(
+                IdempotencyKey.user_id == user_id,
+                IdempotencyKey.endpoint == endpoint,
+                IdempotencyKey.key == idempotency_key,
+            ).first()
+            if existing_idem:
+                return existing_idem
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Đã xảy ra lỗi khi thanh toán vé, vui lòng thử lại.",
+            detail="Bạn đã mua vé cho chuyến đi trong ca/chiều này rồi.",
         )
 
 
-def refund_ticket(db: Session, ticket_id: uuid.UUID, reason: str) -> Optional[WalletTransaction]:
+def refund_ticket(
+    db: Session,
+    ticket_id: uuid.UUID,
+    reason: str,
+    *,
+    commit: bool = True,
+) -> Optional[WalletTransaction]:
     """
     Hàm hoàn tiền TÁI SỬ DỤNG DUY NHẤT cho toàn bộ hệ thống:
     - Trường hợp route_worker không phân được tuyến
@@ -129,13 +167,11 @@ def refund_ticket(db: Session, ticket_id: uuid.UUID, reason: str) -> Optional[Wa
     - Trường hợp sinh viên tự hủy vé trước 22:00 D-1
     Bảo vệ bằng khóa unique constraint (ticket_id, type='refund') chống hoàn tiền 2 lần.
     """
-    # 1. Lock ticket
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).with_for_update().first()
     if not ticket:
         logger.warning("Refund failed: Ticket %s not found.", ticket_id)
         return None
 
-    # Fast-path idempotency check
     if ticket.status == TicketStatus.REFUNDED:
         logger.info("Ticket %s is already refunded. Idempotent skip.", ticket_id)
         existing_tx = db.query(WalletTransaction).filter(
@@ -144,13 +180,11 @@ def refund_ticket(db: Session, ticket_id: uuid.UUID, reason: str) -> Optional[Wa
         ).first()
         return existing_tx
 
-    # 2. Lock wallet
     wallet = db.query(Wallet).filter(Wallet.user_id == ticket.user_id).with_for_update().first()
     if not wallet:
         wallet = create_wallet_for_new_account(db, ticket.user_id)
         wallet = db.query(Wallet).filter(Wallet.user_id == ticket.user_id).with_for_update().first()
 
-    # 3. Update status & credit balance
     ticket.status = TicketStatus.REFUNDED
     wallet.balance += TICKET_PRICE_VND
 
@@ -164,17 +198,20 @@ def refund_ticket(db: Session, ticket_id: uuid.UUID, reason: str) -> Optional[Wa
         reason=reason,
     )
 
+    savepoint = db.begin_nested()
     try:
-        savepoint = db.begin_nested()
         db.add(tx)
         savepoint.commit()
-        db.commit()
+        if commit:
+            db.commit()
         logger.info("Successfully refunded 7,000 VNĐ for ticket %s (reason: %s)", ticket_id, reason)
         return tx
     except IntegrityError as exc:
-        db.rollback()
+        if savepoint.is_active:
+            savepoint.rollback()
+        if commit:
+            db.rollback()
         logger.warning("Refund lock: Duplicate refund attempt for ticket %s blocked by DB constraint: %s", ticket_id, exc)
-        # Fetch existing refund transaction gracefully
         existing_tx = db.query(WalletTransaction).filter(
             WalletTransaction.ticket_id == ticket_id,
             WalletTransaction.type == TransactionType.REFUND,

@@ -1,0 +1,125 @@
+{
+  "tc_id": "TS-SEC-03",
+  "step": "step2",
+  "timestamp": "2026-09-30T10:48:03.740907+07:00",
+  "method": "GET",
+  "url": "http://localhost:8000/api/v1/routes/6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+  "headers": {
+    "Authorization": "Bearer eyJhbGci..."
+  },
+  "payload": null,
+  "status_code": 200,
+  "response": {
+    "id": "6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+    "route_job_id": null,
+    "service_date": "2026-09-21",
+    "session_id": "MORNING_1",
+    "trip_type": "pickup",
+    "vehicle_id": "bc04c529-8f2a-4a62-8b9d-281a47474b5a",
+    "status": "pending",
+    "total_distance": 14.8,
+    "stops": [
+      {
+        "id": "093db662-0b46-4410-b6df-1e96a9025e54",
+        "route_id": "6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+        "location_id": "1962227a-0153-4ea6-9051-59cc7194c32c",
+        "stop_order": 1,
+        "arrival_time": "2026-09-21T15:53:29.794806Z",
+        "location": {
+          "name": "ĐH Cần Thơ - Khu II (Depot chính)",
+          "latitude": 10.0282,
+          "longitude": 105.7682,
+          "time_window_start": null,
+          "time_window_end": null,
+          "demand": 0,
+          "id": "1962227a-0153-4ea6-9051-59cc7194c32c"
+        }
+      },
+      {
+        "id": "4f0423a3-4e90-4a1a-aeb2-5f50e7528869",
+        "route_id": "6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+        "location_id": "8dbcf64d-a447-4b8d-9e80-3b4eb2b838ea",
+        "stop_order": 2,
+        "arrival_time": "2026-09-21T16:05:29.794806Z",
+        "location": {
+          "name": "Bến Ninh Kiều",
+          "latitude": 10.032213,
+          "longitude": 105.787976,
+          "time_window_start": null,
+          "time_window_end": null,
+          "demand": 2,
+          "id": "8dbcf64d-a447-4b8d-9e80-3b4eb2b838ea"
+        }
+      },
+      {
+        "id": "c8fc2715-b7fb-461f-886f-9c8fca07e546",
+        "route_id": "6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+        "location_id": "44ef2b46-d9d0-49ad-97ec-8453762a1ad1",
+        "stop_order": 3,
+        "arrival_time": "2026-09-21T16:17:29.794806Z",
+        "location": {
+          "name": "Bến xe Trung tâm Cần Thơ",
+          "latitude": 10.005198,
+          "longitude": 105.772084,
+          "time_window_start": null,
+          "time_window_end": null,
+          "demand": 6,
+          "id": "44ef2b46-d9d0-49ad-97ec-8453762a1ad1"
+        }
+      },
+      {
+        "id": "66887ad6-4a9b-455b-a8ac-96fbe604ca2b",
+        "route_id": "6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+        "location_id": "040a181f-47a2-48d9-ac88-7fdb9fcde4b8",
+        "stop_order": 4,
+        "arrival_time": "2026-09-21T16:29:29.794806Z",
+        "location": {
+          "name": "Hẻm 51 - Hồ Búng Xán",
+          "latitude": 10.024814,
+          "longitude": 105.767565,
+          "time_window_start": null,
+          "time_window_end": null,
+          "demand": 2,
+          "id": "040a181f-47a2-48d9-ac88-7fdb9fcde4b8"
+        }
+      },
+      {
+        "id": "9fb08cd6-69ca-4b7d-86e7-2f15f1df148e",
+        "route_id": "6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+        "location_id": "ecdbfc40-6060-417c-827a-f14d45bfbb5f",
+        "stop_order": 5,
+        "arrival_time": "2026-09-21T16:41:29.794806Z",
+        "location": {
+          "name": "ĐH Y Dược Cần Thơ",
+          "latitude": 10.034498,
+          "longitude": 105.755812,
+          "time_window_start": null,
+          "time_window_end": null,
+          "demand": 4,
+          "id": "ecdbfc40-6060-417c-827a-f14d45bfbb5f"
+        }
+      },
+      {
+        "id": "8e80a096-8dc5-4809-a6c9-5e1c3e23ce8b",
+        "route_id": "6a34cb4f-3e16-4236-bfa7-5d39d2724460",
+        "location_id": "2e1fea7c-167a-4225-aca3-c2c32e9dd6b2",
+        "stop_order": 6,
+        "arrival_time": "2026-09-21T16:53:29.794806Z",
+        "location": {
+          "name": "Bệnh viện Đa khoa thành phố Cần Thơ",
+          "latitude": 10.030945,
+          "longitude": 105.781573,
+          "time_window_start": null,
+          "time_window_end": null,
+          "demand": 3,
+          "id": "2e1fea7c-167a-4225-aca3-c2c32e9dd6b2"
+        }
+      }
+    ],
+    "passenger_count": 0,
+    "approved_by": null,
+    "approved_at": null,
+    "rejection_reason": null
+  },
+  "response_time_ms": 2419.77
+}

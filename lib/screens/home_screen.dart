@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:overlay_support/overlay_support.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import 'map_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.onNavigateTab, this.onNavigateToBooking});
+  const HomeScreen({
+    super.key,
+    this.onNavigateTab,
+    this.onNavigateToBooking,
+    this.api,
+  });
   final Function(int)? onNavigateTab;
   final VoidCallback? onNavigateToBooking;
+  final ApiService? api;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -354,12 +362,20 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               Expanded(
                 child: _buildFeatureCard(
-                  '🚌',
-                  'Đặt Tuyến Xe',
+                  '🗺️',
+                  'Xem Tuyến Xe & Bản đồ',
                   AppColors.tealBg,
                   () {
-                    widget.onNavigateTab?.call(1);
-                    widget.onNavigateToBooking?.call();
+                    if (widget.api != null) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MapScreen(api: widget.api!),
+                        ),
+                      );
+                    } else {
+                      widget.onNavigateTab?.call(1);
+                    }
                   },
                 ),
               ),

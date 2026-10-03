@@ -279,7 +279,9 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
             from app.services.wallet_service import refund_ticket
             unassigned_tickets = [t for t in tickets if str(t.id) not in assigned_ids]
             for unassigned_t in unassigned_tickets:
-                refund_ticket(db, unassigned_t.id, reason="route_worker_failed")
+                # Keep route creation, ticket assignment and any refunds in this
+                # worker transaction so a failed validation rolls everything back.
+                refund_ticket(db, unassigned_t.id, reason="route_worker_failed", commit=False)
 
             _validate_route_and_stops(job_id_str, created_routes, len(assigned_ids), str(depot.id))
             job.status, job.error_message = RouteJobStatus.SUCCEEDED, None

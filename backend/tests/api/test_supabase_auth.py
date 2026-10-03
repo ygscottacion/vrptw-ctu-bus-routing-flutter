@@ -89,14 +89,25 @@ def ensure_auth_user(db_session: Session, user_id: uuid.UUID):
 
 @pytest.fixture(scope="function")
 def db_session():
-    with engine.connect() as conn:
-        try:
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("ATTACH DATABASE ':memory:' AS auth;"))
+                conn.commit()
+            except Exception:
+                pass
+            Base.metadata.create_all(bind=conn)
+            try:
+                conn.execute(text("CREATE TABLE IF NOT EXISTS auth.users (id VARCHAR(36) PRIMARY KEY, aud VARCHAR DEFAULT 'authenticated', role VARCHAR DEFAULT 'authenticated');"))
+                conn.commit()
+            except Exception:
+                pass
+    else:
+        with engine.connect() as conn:
             conn.execute(text("CREATE SCHEMA IF NOT EXISTS auth;"))
-            conn.execute(text("CREATE TABLE IF NOT EXISTS auth.users (id UUID PRIMARY KEY, aud VARCHAR DEFAULT 'authenticated', role VARCHAR DEFAULT 'authenticated');"))
+            conn.execute(text("CREATE TABLE IF NOT EXISTS auth.users (id VARCHAR(36) PRIMARY KEY, aud VARCHAR DEFAULT 'authenticated', role VARCHAR DEFAULT 'authenticated');"))
             conn.commit()
-        except Exception:
-            pass
-    Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
     session = SessionLocal()
     yield session
     session.close()

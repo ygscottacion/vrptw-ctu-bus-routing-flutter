@@ -1,0 +1,41 @@
+{
+  "tc_id": "TS-SEC-04",
+  "step": "step2",
+  "timestamp": "2026-09-30T10:48:11.251427+07:00",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/tickets/reserve",
+  "headers": {
+    "X-Idempotency-Key": "KEY-TEST-12345",
+    "Authorization": "Bearer eyJhbGci..."
+  },
+  "payload": {
+    "service_date": "2026-10-01",
+    "session_id": "MORNING_1",
+    "trip_type": "pickup",
+    "pickup_location_id": "8dbcf64d-a447-4b8d-9e80-3b4eb2b838ea"
+  },
+  "status_code": 201,
+  "response": {
+    "id": "620de5d5-55ac-45eb-b47f-27c56aa2c50d",
+    "status": "paid_pending_route",
+    "qr_code": "TICKET_BCCF1D3F645A4409",
+    "user_id": "98b6d26f-bee3-4477-8c1b-bc0f45c99964",
+    "route_id": null,
+    "trip_type": "pickup",
+    "created_at": "2026-09-30T03:48:08.077382Z",
+    "pickup_eta": null,
+    "session_id": "MORNING_1",
+    "service_date": "2026-10-01",
+    "pickup_location": {
+      "id": "8dbcf64d-a447-4b8d-9e80-3b4eb2b838ea",
+      "name": "Bến Ninh Kiều",
+      "demand": 2,
+      "latitude": 10.032213,
+      "longitude": 105.787976,
+      "time_window_end": null,
+      "time_window_start": null
+    },
+    "pickup_location_id": "8dbcf64d-a447-4b8d-9e80-3b4eb2b838ea"
+  },
+  "response_time_ms": 2689.65
+}

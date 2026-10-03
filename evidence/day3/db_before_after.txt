@@ -1,0 +1,22 @@
+==================================================
+DOI SOAT CO SO DU LIEU VAP API SAU TEST TS-SEC-04
+==================================================
+
+1. Cau truy van su dung:
+   - Kiem tra so du vi:
+     SELECT balance FROM wallets WHERE user_id = '98b6d26f-bee3-4477-8c1b-bc0f45c99964';
+   - Kiem tra so luong ve:
+     SELECT COUNT(*) FROM tickets WHERE user_id = '98b6d26f-bee3-4477-8c1b-bc0f45c99964';
+
+2. Ket qua doi soat:
+   - So du vi TRUOC test: 200,000 VNĐ
+   - So du vi SAU test:   193,000 VNĐ
+   - Chenh lech so du:    -7,000 VNĐ (Ky vọng: -7,000 VNĐ)
+
+   - So ve TRUOC test:    0 vé
+   - So ve SAU test:      1 vé
+   - So ve tao moi:       +1 vé (Ky vọng: +1 vé)
+
+3. Ket luan:
+   - Deduct balance: PASS
+   - Create single ticket: PASS

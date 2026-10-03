@@ -16,13 +16,14 @@ def process_idempotency_key(
     request_data: Any,
 ) -> Tuple[Optional[IdempotencyKey], Optional[str]]:
     """
-    Checks persistent IdempotencyKey in PostgreSQL.
+    Checks persistent IdempotencyKey in PostgreSQL using row locking.
     Returns (existing_record, request_hash).
     Raises HTTP 409 Conflict if key was used with different payload.
     """
-    if not key:
+    if not key or not key.strip():
         return None, None
 
+    key = key.strip()
     request_str = json.dumps(request_data, default=str, sort_keys=True)
     request_hash = hashlib.sha256(request_str.encode("utf-8")).hexdigest()
 
@@ -43,7 +44,7 @@ def process_idempotency_key(
 
         if expires_at and expires_at <= datetime.datetime.now(datetime.timezone.utc):
             db.delete(existing)
-            db.flush()
+            db.commit()
             return None, request_hash
 
         if existing.request_hash != request_hash:
@@ -65,8 +66,8 @@ def save_idempotency_key(
     response_code: int,
     response_body: dict,
     ttl_hours: int = 24,
-) -> None:
-    """Saves persistent idempotency record in DB."""
+) -> IdempotencyKey:
+    """Adds persistent idempotency record to session (to be committed atomically with main transaction)."""
     expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=ttl_hours)
     idempotency_rec = IdempotencyKey(
         user_id=user_id,
@@ -78,3 +79,4 @@ def save_idempotency_key(
         expires_at=expires_at,
     )
     db.add(idempotency_rec)
+    return idempotency_rec

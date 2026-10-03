@@ -8,7 +8,7 @@ from app.models.ticket import Ticket, TicketStatus
 def create_tickets(db: Session, user_id: uuid.UUID, quantity: int = 1, **ticket_fields) -> List[Ticket]:
     tickets = []
     for _ in range(quantity):
-        qr_code = f"CTUBUS-{uuid.uuid4().hex[:12].upper()}"
+        qr_code = f"BUS-{uuid.uuid4().hex[:6].upper()}"
         db_ticket = Ticket(
             id=uuid.uuid4(),
             user_id=user_id,

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../services/api_service.dart';
@@ -25,6 +26,8 @@ class _TicketScreenState extends State<TicketScreen>
 
   List<_MyTicket> _myTickets = [];
   bool _loadingTickets = true;
+  bool _fetchingTickets = false;
+  Timer? _ticketRefreshTimer;
 
   bool _isBuying = false;
   String? _buyError;
@@ -73,6 +76,22 @@ class _TicketScreenState extends State<TicketScreen>
     _serviceDate = firstBookable.date;
     _loadRoutes();
     _loadTickets();
+    _tabController.addListener(() {
+      if (_tabController.index == 0) {
+        _loadTickets();
+      } else if (_tabController.index == 1 &&
+          _routes.isEmpty &&
+          !_loadingRoutes) {
+        setState(() {
+          _loadingRoutes = true;
+          _routeError = null;
+        });
+        _loadRoutes();
+      }
+    });
+    _ticketRefreshTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (_tabController.index == 0) _loadTickets();
+    });
   }
 
   List<_ServiceDateOption> _buildDateOptions() {
@@ -116,12 +135,10 @@ class _TicketScreenState extends State<TicketScreen>
       setState(() {
         _routes = loadedRoutes;
         _routeError = null;
-        final selectable = _routes.where((r) => !_isCtuStop(r.label)).toList();
-        if (selectable.isNotEmpty) {
-          _selectedRoute = selectable.first.id;
-        } else if (_routes.isNotEmpty) {
-          _selectedRoute = _routes.first.id;
-        }
+        final selectable = _selectableRoutes;
+        _selectedRoute = selectable.any((r) => r.id == _selectedRoute)
+            ? _selectedRoute
+            : (selectable.isNotEmpty ? selectable.first.id : null);
       });
     } catch (e) {
       if (mounted) {
@@ -137,6 +154,8 @@ class _TicketScreenState extends State<TicketScreen>
   /// Backend Ngay 4 da co du 5 trang thai that: reserved/assigned/used/
   /// cancelled/expired - khong con phai suy luan qua route_id nua.
   Future<void> _loadTickets() async {
+    if (_fetchingTickets) return;
+    _fetchingTickets = true;
     try {
       final items = await widget.api.fetchMyTickets();
       if (!mounted) return;
@@ -146,7 +165,9 @@ class _TicketScreenState extends State<TicketScreen>
           final status = ticket['status']?.toString() ?? 'expired';
           final routeId = ticket['route_id']?.toString();
           return _MyTicket(
-            id: 'BUS${ticket['id']}',
+            id: (ticket['qr_code'] != null && ticket['qr_code'].toString().isNotEmpty)
+                ? ticket['qr_code'].toString()
+                : 'BUS-${ticket['id'].toString().substring(0, 6).toUpperCase()}',
             type: 'Vé điện tử',
             purchasedDate:
                 ticket['created_at']?.toString().split('T').first ?? '—',
@@ -159,12 +180,14 @@ class _TicketScreenState extends State<TicketScreen>
     } catch (_) {
       // Người dùng chưa đăng nhập hoặc backend chưa sẵn sàng.
     } finally {
+      _fetchingTickets = false;
       if (mounted) setState(() => _loadingTickets = false);
     }
   }
 
   @override
   void dispose() {
+    _ticketRefreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -183,7 +206,7 @@ class _TicketScreenState extends State<TicketScreen>
 
   Map<String, int> get _price {
     if (_routes.isEmpty || _selectedRoute == null) {
-      return {'original': 0, 'discount': 0, 'total': 0};
+      return {'original': 7000, 'discount': 0, 'total': 7000};
     }
     final route = _routes.firstWhere((r) => r.id == _selectedRoute);
     // MVP chi ban 1 loai ve luot duy nhat, khong giam gia.
@@ -248,30 +271,50 @@ class _TicketScreenState extends State<TicketScreen>
   // ─── MY TICKETS ─────────────────────────────────────────────
   Widget _buildMyTickets() {
     if (_loadingTickets) {
-      return const Center(
-          child: CircularProgressIndicator(color: AppColors.teal));
-    }
-    if (_myTickets.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.directions_bus_outlined,
-                size: 64, color: AppColors.textMuted.withValues(alpha: 0.5)),
-            const SizedBox(height: AppSpacing.md),
-            Semantics(
-              liveRegion: true,
-              child: const Text('Bạn chưa có vé nào.',
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+      return RefreshIndicator(
+        onRefresh: _loadTickets,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(
+              height: 280,
+              child: Center(child: CircularProgressIndicator(color: AppColors.teal)),
             ),
           ],
         ),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      itemCount: _myTickets.length,
-      itemBuilder: (_, i) => _buildTicketCard(_myTickets[i]),
+    if (_myTickets.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadTickets,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 280,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.directions_bus_outlined,
+                      size: 64, color: AppColors.textMuted.withValues(alpha: 0.5)),
+                  const SizedBox(height: AppSpacing.md),
+                  const Text('Bạn chưa có vé nào.',
+                      style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadTickets,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        itemCount: _myTickets.length,
+        itemBuilder: (_, i) => _buildTicketCard(_myTickets[i]),
+      ),
     );
   }
 
@@ -336,11 +379,10 @@ class _TicketScreenState extends State<TicketScreen>
         final sessionId = route['session_id']?.toString() ?? '';
         final tripType = route['trip_type']?.toString() ?? '';
         final vehicleId = route['vehicle_id']?.toString();
+        final totalDistance = (route['total_distance'] as num?)?.toDouble();
         final stops = (route['stops'] as List<dynamic>? ?? []);
-        final passengerCount = route['passenger_count'] as int? ?? 0;
-        // Ky vong: 1 depot + so hanh khach da assigned. Neu thieu -> BUG-VRPTW-01
-        // (route_stops chua day du), hien thong bao thay vi coi la loi.
-        final incomplete = stops.length < (passengerCount + 1);
+        // A stop can serve many passengers, so stop count is not passenger count.
+        final incomplete = stops.length < 2;
 
         return Padding(
           padding: const EdgeInsets.symmetric(
@@ -365,6 +407,15 @@ class _TicketScreenState extends State<TicketScreen>
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
                     'Xe: #${vehicleId.length > 8 ? vehicleId.substring(0, 8) : vehicleId}',
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ),
+              if (totalDistance != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Tổng quãng đường: ${totalDistance.toStringAsFixed(1)} km',
                     style: const TextStyle(
                         fontSize: 13, color: AppColors.textSecondary),
                   ),
@@ -478,7 +529,7 @@ class _TicketScreenState extends State<TicketScreen>
             ),
           ),
 
-          if (t.status == 'reserved') ...[
+          if (t.status == 'reserved' || t.status == 'paid_pending_route') ...[
             const SizedBox(height: AppSpacing.xl),
             Icon(Icons.hourglass_top_rounded,
                 size: 56, color: AppColors.orange.withValues(alpha: 0.7)),
@@ -603,68 +654,6 @@ class _TicketScreenState extends State<TicketScreen>
 
   // ─── BUY TICKET ─────────────────────────────────────────────
   Widget _buildBuyTicket() {
-    if (_loadingRoutes) {
-      return const Center(
-          child: CircularProgressIndicator(color: AppColors.teal));
-    }
-    if (_routeError != null) {
-      final is401 = _routeError!.contains('401');
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.lg),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                  is401
-                      ? Icons.lock_outline_rounded
-                      : Icons.error_outline_rounded,
-                  size: 54,
-                  color: is401 ? AppColors.orange : Colors.red),
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                is401
-                    ? 'Vui lòng đăng nhập tài khoản Sinh viên để mua vé và xem danh sách tuyến.'
-                    : 'Lỗi tải dữ liệu: $_routeError',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _loadingRoutes = true;
-                    _routeError = null;
-                  });
-                  _loadRoutes();
-                  _loadTickets();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.teal,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md)),
-                ),
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Thử tải lại',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_routes.isEmpty) {
-      return const Center(
-          child: Text('Không có tuyến đường khả dụng.',
-              style: TextStyle(color: AppColors.textMuted)));
-    }
     return Column(
       children: [
         Expanded(
@@ -716,11 +705,57 @@ class _TicketScreenState extends State<TicketScreen>
                       const TextStyle(fontSize: 12, color: AppColors.textMuted),
                 ),
                 const SizedBox(height: AppSpacing.sm),
-                if (_selectableRoutes.isEmpty)
+                if (_loadingRoutes)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
-                    child: Text('Chưa có trạm dừng khả dụng ngoài CTU.',
-                        style: TextStyle(color: AppColors.textMuted)),
+                    child: Center(
+                        child: CircularProgressIndicator(color: AppColors.teal)),
+                  )
+                else if (_routeError != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Không tải được danh sách trạm: $_routeError',
+                            style: const TextStyle(color: Colors.red)),
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _loadingRoutes = true;
+                              _routeError = null;
+                            });
+                            _loadRoutes();
+                          },
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Thử tải lại'),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_selectableRoutes.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Chưa có trạm đón khả dụng. Việc mua vé không cần tuyến đã sinh, nhưng cần có trạm đón để gắn vào vé.',
+                          style: TextStyle(color: AppColors.textMuted),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _loadingRoutes = true;
+                              _routeError = null;
+                            });
+                            _loadRoutes();
+                          },
+                          icon: const Icon(Icons.refresh_rounded),
+                          label: const Text('Tải lại danh sách trạm'),
+                        ),
+                      ],
+                    ),
                   )
                 else
                   ..._selectableRoutes.map((r) => _buildRouteOption(r)),
@@ -861,7 +896,8 @@ class _TicketScreenState extends State<TicketScreen>
 
   Widget _buildCheckoutBottomBar() {
     final p = _price;
-    final canBuy = _isSelectedDateBookable && !_isBuying;
+    final canBuy =
+        _isSelectedDateBookable && !_isBuying && _selectedRoute != null;
     return Container(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 30),
@@ -913,9 +949,11 @@ class _TicketScreenState extends State<TicketScreen>
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2))
                   : Text(
-                      _isSelectedDateBookable
-                          ? 'Thanh toán ngay'
-                          : 'Ngày đã hết hạn đặt',
+                      !_isSelectedDateBookable
+                          ? 'Ngày đã hết hạn đặt'
+                          : (_selectedRoute == null
+                              ? 'Chọn trạm đón để tiếp tục'
+                              : 'Thanh toán ngay'),
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
             ),
@@ -1088,7 +1126,7 @@ class _TicketScreenState extends State<TicketScreen>
                   borderRadius: BorderRadius.circular(AppRadius.md)),
               child: Column(
                 children: [
-                  Text('#BUS${ticket['id']}',
+                  Text('#${ticket['qr_code'] ?? 'BUS-${ticket['id'].toString().substring(0, 6).toUpperCase()}'}',
                       style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -1169,6 +1207,7 @@ class _MyTicket {
 
   String get statusLabel {
     switch (status) {
+      case 'paid_pending_route':
       case 'reserved':
         return 'Đang chờ phân tuyến';
       case 'assigned':
@@ -1186,6 +1225,7 @@ class _MyTicket {
 
   Color get statusColor {
     switch (status) {
+      case 'paid_pending_route':
       case 'reserved':
         return AppColors.orange;
       case 'assigned':

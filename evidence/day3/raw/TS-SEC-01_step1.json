@@ -1,0 +1,21 @@
+{
+  "tc_id": "TS-SEC-01",
+  "step": "step1",
+  "timestamp": "2026-09-30T10:47:51.821460+07:00",
+  "method": "POST",
+  "url": "http://localhost:8000/api/v1/routes/admin/generate",
+  "headers": {
+    "Authorization": "Bearer eyJhbGci..."
+  },
+  "payload": {
+    "service_date": "2026-10-01",
+    "session_id": "MORNING_1",
+    "trip_type": "pickup",
+    "depot_location_id": "1962227a-0153-4ea6-9051-59cc7194c32c"
+  },
+  "status_code": 403,
+  "response": {
+    "detail": "The user doesn't have enough privileges (admin required)"
+  },
+  "response_time_ms": 3218.9
+}

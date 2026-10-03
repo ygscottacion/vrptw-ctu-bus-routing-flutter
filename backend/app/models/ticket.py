@@ -2,7 +2,7 @@ import enum
 import datetime
 import uuid
 from typing import Optional
-from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Enum as SQLEnum, UniqueConstraint, Index
+from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Enum as SQLEnum, Index, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -59,6 +59,15 @@ class Ticket(Base):
         return None
 
     __table_args__ = (
-        UniqueConstraint("user_id", "service_date", "session_id", "trip_type", name="uq_tickets_user_run"),
+        Index(
+            "uq_tickets_user_run_active",
+            "user_id",
+            "service_date",
+            "session_id",
+            "trip_type",
+            unique=True,
+            postgresql_where=text("status IN ('paid_pending_route', 'reserved', 'assigned', 'used')"),
+            sqlite_where=text("status IN ('paid_pending_route', 'reserved', 'assigned', 'used')"),
+        ),
         Index("ix_tickets_run_status", "service_date", "session_id", "trip_type", "status"),
     )

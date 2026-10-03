@@ -1,9 +1,9 @@
 import hmac
 import uuid
 import datetime
-from zoneinfo import ZoneInfo
-from typing import Any, List, Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+import time
+from typing import Any, List, Optional, Tuple
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func
 
@@ -24,10 +24,19 @@ from app.schemas.route import (
     RouteStopResponse,
 )
 from app.services.route_worker import run_route_job_worker
+from app.services.student_routing.helpers.goong_direction import goong_direction_service
 from app.core.timezone import VN_TZ
 
-
 router = APIRouter()
+
+# ── Centralized State Machine Matrix for Route Transitions ───────────────────
+VALID_ROUTE_TRANSITIONS = {
+    RouteStatus.PENDING: [RouteStatus.APPROVED, RouteStatus.REJECTED, RouteStatus.IN_PROGRESS],
+    RouteStatus.APPROVED: [RouteStatus.IN_PROGRESS, RouteStatus.REJECTED],
+    RouteStatus.IN_PROGRESS: [RouteStatus.COMPLETED],
+    RouteStatus.REJECTED: [],
+    RouteStatus.COMPLETED: [],
+}
 
 
 def _route_job_response(job: RouteJob) -> dict[str, Any]:
@@ -60,7 +69,6 @@ def verify_cron_secret(x_cron_secret: Optional[str] = Header(None, alias="X-Cron
 
 
 def _create_and_run_job(request_in: RouteGenerateRequest, db: Session) -> dict[str, Any]:
-
     # 1. Check cutoff deadline (Job only allowed after 22:00 cutoff on D-1)
     now_vn = datetime.datetime.now(VN_TZ)
     cutoff_dt = datetime.datetime.combine(
@@ -162,10 +170,6 @@ def generate_routes(
     x_cron_secret: str = Depends(verify_cron_secret),
     db: Session = Depends(deps.get_db),
 ) -> Any:
-    """
-    Endpoint nội bộ dành cho Cron Trigger tạo và chạy Job định tuyến VRPTW.
-    Yêu cầu Header X-Cron-Secret chính xác.
-    """
     return _create_and_run_job(request_in, db)
 
 
@@ -175,9 +179,6 @@ def generate_routes_admin(
     current_admin: Profile = Depends(deps.get_current_admin),
     db: Session = Depends(deps.get_db),
 ) -> Any:
-    """
-    Endpoint dành cho Admin sinh tuyến trực tiếp trên Admin Portal (Auth qua JWT Admin).
-    """
     return _create_and_run_job(request_in, db)
 
 
@@ -187,7 +188,6 @@ def read_job_status(
     db: Session = Depends(deps.get_db),
     current_profile: Profile = Depends(deps.get_current_profile),
 ) -> Any:
-    """Tra cứu trạng thái của tác vụ sinh tuyến theo job_id."""
     job = db.query(RouteJob).filter(RouteJob.id == job_id).first()
     if not job:
         raise HTTPException(
@@ -195,7 +195,6 @@ def read_job_status(
             detail="Không tìm thấy thông tin job.",
         )
     return _route_job_response(job)
-
 
 
 @router.get("", response_model=List[RouteResponse])
@@ -207,12 +206,6 @@ def read_routes(
     db: Session = Depends(deps.get_db),
     current_profile: Profile = Depends(deps.get_current_profile),
 ) -> Any:
-    """
-    Lấy danh sách các tuyến xe có phân quyền RBAC:
-    - Sinh viên: Chỉ thấy các tuyến liên kết với vé đã gán của chính mình.
-    - Tài xế: Chỉ thấy các tuyến được gán cho xe của mình phụ trách.
-    - Admin: Xem đầy đủ theo các bộ lọc query.
-    """
     query = (
         db.query(Route)
         .options(
@@ -232,7 +225,6 @@ def read_routes(
     if status is not None and not isinstance(status, Param):
         query = query.filter(Route.status == status)
 
-    # Apply RBAC filters
     if current_profile.role == ProfileRole.PASSENGER:
         user_ticket_route_ids = (
             db.query(Ticket.route_id)
@@ -254,162 +246,10 @@ def read_routes(
         query = query.filter(Route.vehicle_id.in_(driver_vehicle_ids))
 
     routes = query.order_by(Route.service_date.desc(), Route.session_id.asc()).all()
-
     return routes
 
 
-@router.get("/{route_id}", response_model=RouteResponse)
-def read_route_detail(
-    route_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_profile: Profile = Depends(deps.get_current_profile),
-) -> Any:
-    """
-    Chi tiết tuyến xe theo ID với phân quyền RBAC và danh sách các trạm dừng theo stop_order.
-    """
-    route = (
-        db.query(Route)
-        .options(
-            selectinload(Route.stops).selectinload(RouteStop.location),
-            joinedload(Route.vehicle),
-        )
-        .filter(Route.id == route_id)
-        .first()
-    )
-
-    if not route:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy thông tin tuyến xe.",
-        )
-
-    # RBAC Validation
-    if current_profile.role == ProfileRole.PASSENGER:
-        user_has_ticket = (
-            db.query(Ticket)
-            .filter(
-                Ticket.route_id == route.id,
-                Ticket.user_id == current_profile.id,
-            )
-            .first()
-        )
-        if not user_has_ticket:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bạn không có quyền truy cập thông tin tuyến xe này.",
-            )
-    elif current_profile.role == ProfileRole.DRIVER:
-        if not route.vehicle_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tuyến xe chưa được phân công cho phương tiện nào.",
-            )
-        vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
-        if not vehicle or vehicle.driver_id != current_profile.id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tuyến xe này không thuộc xe do bạn quản lý.",
-            )
-
-    return route
-
-
-@router.post("/{route_id}/start", response_model=RouteResponse)
-@router.patch("/{route_id}/start", response_model=RouteResponse)
-def start_route(
-    route_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_driver: Profile = Depends(deps.get_current_driver),
-) -> Any:
-    """
-    Tài xế bắt đầu ca chạy: chuyển trạng thái tuyến sang IN_PROGRESS.
-    Xác thực tài xế đang quản lý phương tiện được phân công cho tuyến xe.
-    """
-    route = (
-        db.query(Route)
-        .options(
-            selectinload(Route.stops).selectinload(RouteStop.location),
-            joinedload(Route.vehicle),
-        )
-        .filter(Route.id == route_id)
-        .first()
-    )
-    if not route:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy tuyến xe.",
-        )
-
-    if not route.vehicle_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tuyến xe chưa được gán cho phương tiện nào.",
-        )
-
-    vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
-    if not vehicle or vehicle.driver_id != current_driver.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tuyến xe này không thuộc xe do bạn quản lý.",
-        )
-
-    route.status = RouteStatus.IN_PROGRESS
-    db.commit()
-    db.refresh(route)
-    return route
-
-
-@router.post("/{route_id}/end", response_model=RouteResponse)
-@router.patch("/{route_id}/end", response_model=RouteResponse)
-def end_route(
-    route_id: uuid.UUID,
-    db: Session = Depends(deps.get_db),
-    current_driver: Profile = Depends(deps.get_current_driver),
-) -> Any:
-    """
-    Tài xế kết thúc ca chạy: chuyển trạng thái tuyến sang COMPLETED.
-    """
-    route = (
-        db.query(Route)
-        .options(
-            selectinload(Route.stops).selectinload(RouteStop.location),
-            joinedload(Route.vehicle),
-        )
-        .filter(Route.id == route_id)
-        .first()
-    )
-    if not route:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Không tìm thấy tuyến xe.",
-        )
-
-    if not route.vehicle_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tuyến xe chưa được gán cho phương tiện nào.",
-        )
-
-    vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
-    if not vehicle or vehicle.driver_id != current_driver.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tuyến xe này không thuộc xe do bạn quản lý.",
-        )
-
-    route.status = RouteStatus.COMPLETED
-    db.commit()
-    db.refresh(route)
-    return route
-
-
-import time
-from fastapi import Request
-from typing import Tuple
-from app.schemas.route import PolylineResponse
-from app.services.student_routing.helpers.goong_direction import goong_direction_service
-
-# Simple rate limiter for polyline requests (max 60 req/min per IP)
+# Polyline Rate Limiter
 _rate_limit_store: dict[str, list[float]] = {}
 
 def _check_rate_limit(client_ip: str, limit: int = 60, window_seconds: float = 60.0):
@@ -433,11 +273,6 @@ def get_route_polyline(
     waypoints: Optional[str] = Query(None, description="Chuỗi tọa độ phân cách bởi dấu chấm phẩy ';' hoặc '|'"),
     current_profile: Profile = Depends(deps.get_current_profile),
 ) -> Any:
-    """
-    Endpoint nội bộ lấy đường dẫn uốn lượn (polyline), quãng đường (km) và thời gian di chuyển (phút).
-    Đã qua mã hóa, xác thực và lưu Cache 24h.
-    Không lộ Goong REST API Key cho mobile client.
-    """
     client_ip = request.client.host if request.client else "127.0.0.1"
     _check_rate_limit(client_ip)
 
@@ -494,78 +329,182 @@ def get_route_polyline(
     return goong_direction_service.get_route_polyline(parsed_pts)
 
 
+@router.get("/{route_id}", response_model=RouteResponse)
+def read_route_detail(
+    route_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_profile: Profile = Depends(deps.get_current_profile),
+) -> Any:
+    route = (
+        db.query(Route)
+        .options(
+            selectinload(Route.stops).selectinload(RouteStop.location),
+            joinedload(Route.vehicle),
+        )
+        .filter(Route.id == route_id)
+        .first()
+    )
+
+    if not route:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Không tìm thấy thông tin tuyến xe.",
+        )
+
+    if current_profile.role == ProfileRole.PASSENGER:
+        user_has_ticket = (
+            db.query(Ticket)
+            .filter(
+                Ticket.route_id == route.id,
+                Ticket.user_id == current_profile.id,
+            )
+            .first()
+        )
+        if not user_has_ticket:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Bạn không có quyền truy cập thông tin tuyến xe này.",
+            )
+    elif current_profile.role == ProfileRole.DRIVER:
+        if not route.vehicle_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tuyến xe chưa được phân công cho phương tiện nào.",
+            )
+        vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
+        if not vehicle or vehicle.driver_id != current_profile.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tuyến xe này không thuộc xe do bạn quản lý.",
+            )
+
+    return route
+
+
+# ── Single Set of Driver Route State Handlers (Atomic & Strict State Machine) ──
+
+@router.post("/{route_id}/start", response_model=RouteResponse)
 @router.patch("/{route_id}/start", response_model=RouteResponse)
 def start_route(
     route_id: uuid.UUID,
     db: Session = Depends(deps.get_db),
     current_driver: Profile = Depends(deps.get_current_driver),
 ) -> Any:
-    """Tài xế bắt đầu thực hiện chuyến xe (Chỉ chủ xe hoặc Admin mới có quyền)."""
+    """
+    Tài xế bắt đầu ca chạy: PENDING / APPROVED -> IN_PROGRESS.
+    Xác thực order: Auth (401) -> Ownership (403) -> State Machine (409).
+    """
+    # 1. Lock route row for update without outer join
     route = (
         db.query(Route)
-        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
         .filter(Route.id == route_id)
+        .with_for_update()
         .first()
     )
     if not route:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
 
+    # 2. Ownership check (403)
     if current_driver.role == ProfileRole.DRIVER:
-        if not route.vehicle_id or not route.vehicle or route.vehicle.driver_id != current_driver.id:
+        if not route.vehicle_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bạn không có quyền bắt đầu tuyến xe này (chỉ tài xế phụ trách phương tiện mới có quyền).",
+                detail="Tuyến xe này không thuộc xe do bạn quản lý.",
+            )
+        vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
+        if not vehicle or vehicle.driver_id != current_driver.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tuyến xe này không thuộc xe do bạn quản lý.",
             )
 
+    # 3. State Machine Check (409)
     if route.status == RouteStatus.IN_PROGRESS:
-        return route
-    if route.status == RouteStatus.COMPLETED:
+        # Load relationships for response
+        return (
+            db.query(Route)
+            .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+            .filter(Route.id == route_id)
+            .first()
+        )
+
+    valid_from = [RouteStatus.PENDING, RouteStatus.APPROVED]
+    if route.status not in valid_from:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Tuyến xe này đã hoàn tất chuyến trước đó.",
+            detail=f"Không thể chuyển tuyến từ trạng thái '{route.status.value}' sang 'in_progress'.",
         )
 
     route.status = RouteStatus.IN_PROGRESS
     db.commit()
-    db.refresh(route)
-    return route
+    
+    return (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )
 
 
+@router.post("/{route_id}/end", response_model=RouteResponse)
 @router.patch("/{route_id}/end", response_model=RouteResponse)
 def end_route(
     route_id: uuid.UUID,
     db: Session = Depends(deps.get_db),
     current_driver: Profile = Depends(deps.get_current_driver),
 ) -> Any:
-    """Tài xế kết thúc chuyến xe (Chỉ chủ xe hoặc Admin mới có quyền)."""
+    """
+    Tài xế kết thúc ca chạy: IN_PROGRESS -> COMPLETED.
+    Xác thực order: Auth (401) -> Ownership (403) -> State Machine (409).
+    """
+    # 1. Lock route row for update without outer join
     route = (
         db.query(Route)
-        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
         .filter(Route.id == route_id)
+        .with_for_update()
         .first()
     )
     if not route:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
 
+    # 2. Ownership check (403)
     if current_driver.role == ProfileRole.DRIVER:
-        if not route.vehicle_id or not route.vehicle or route.vehicle.driver_id != current_driver.id:
+        if not route.vehicle_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Bạn không có quyền kết thúc tuyến xe này.",
+                detail="Tuyến xe này không thuộc xe do bạn quản lý.",
+            )
+        vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
+        if not vehicle or vehicle.driver_id != current_driver.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tuyến xe này không thuộc xe do bạn quản lý.",
             )
 
+    # 3. State Machine Check (409)
     if route.status == RouteStatus.COMPLETED:
-        return route
-    if route.status in (RouteStatus.PENDING, RouteStatus.APPROVED):
+        return (
+            db.query(Route)
+            .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+            .filter(Route.id == route_id)
+            .first()
+        )
+
+    if route.status != RouteStatus.IN_PROGRESS:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Tuyến xe chưa được bắt đầu.",
+            detail=f"Không thể chuyển tuyến từ trạng thái '{route.status.value}' sang 'completed'.",
         )
 
     route.status = RouteStatus.COMPLETED
     db.commit()
-    db.refresh(route)
-    return route
+
+    return (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )
 
 
 @router.post("/{route_id}/approve", response_model=RouteResponse)
@@ -574,23 +513,42 @@ def approve_route(
     db: Session = Depends(deps.get_db),
     current_admin: Profile = Depends(deps.get_current_admin),
 ) -> Any:
-    """Admin duyệt lộ trình tuyến buýt."""
+    """Admin duyệt lộ trình tuyến buýt: PENDING -> APPROVED."""
     route = (
         db.query(Route)
-        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
         .filter(Route.id == route_id)
+        .with_for_update()
         .first()
     )
     if not route:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
+
+    if route.status == RouteStatus.APPROVED:
+        return (
+            db.query(Route)
+            .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+            .filter(Route.id == route_id)
+            .first()
+        )
+
+    if route.status != RouteStatus.PENDING:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Không thể duyệt tuyến đang ở trạng thái '{route.status.value}'.",
+        )
 
     route.status = RouteStatus.APPROVED
     route.approved_by = current_admin.id
     route.approved_at = datetime.datetime.now(VN_TZ)
     route.rejection_reason = None
     db.commit()
-    db.refresh(route)
-    return route
+
+    return (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )
 
 
 @router.post("/{route_id}/reject", response_model=RouteResponse)
@@ -600,22 +558,40 @@ def reject_route(
     db: Session = Depends(deps.get_db),
     current_admin: Profile = Depends(deps.get_current_admin),
 ) -> Any:
-    """Admin từ chối lộ trình tuyến buýt (ghi lý do)."""
+    """Admin từ chối lộ trình tuyến buýt: PENDING / APPROVED -> REJECTED."""
     route = (
         db.query(Route)
-        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
         .filter(Route.id == route_id)
+        .with_for_update()
         .first()
     )
     if not route:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
+
+    if route.status == RouteStatus.REJECTED:
+        return (
+            db.query(Route)
+            .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+            .filter(Route.id == route_id)
+            .first()
+        )
+
+    valid_from = [RouteStatus.PENDING, RouteStatus.APPROVED]
+    if route.status not in valid_from:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Không thể từ chối tuyến đang ở trạng thái '{route.status.value}'.",
+        )
 
     route.status = RouteStatus.REJECTED
     route.approved_by = current_admin.id
     route.approved_at = datetime.datetime.now(VN_TZ)
     route.rejection_reason = reject_in.reason
     db.commit()
-    db.refresh(route)
-    return route
 
-
+    return (
+        db.query(Route)
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .filter(Route.id == route_id)
+        .first()
+    )

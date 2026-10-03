@@ -4,13 +4,19 @@ from app.core.config import settings
 
 SQLALCHEMY_DATABASE_URL = settings.assemble_db_connection()
 
+from sqlalchemy.pool import StaticPool
+
 try:
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
         pool_pre_ping=True,
     )
 except Exception:
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

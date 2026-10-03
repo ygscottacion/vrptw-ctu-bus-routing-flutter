@@ -55,7 +55,11 @@ def reserve_ticket(
     """
     Đặt mua vé xe buýt (trừ 7,000 VNĐ từ ví) theo ngày, ca, chiều và trạm đón.
     Chỉ áp dụng trước 22:00 (Asia/Ho_Chi_Minh) ngày hôm trước.
+    Bảo vệ bằng Idempotency Key chống đặt trùng.
     """
+    import json
+    from app.models.idempotency_key import IdempotencyKey
+
     endpoint = "/api/v1/tickets/reserve"
     existing_idempotency, req_hash = process_idempotency_key(
         db=db,
@@ -67,29 +71,29 @@ def reserve_ticket(
 
     if existing_idempotency:
         return Response(
-            content=existing_idempotency.response_body if isinstance(existing_idempotency.response_body, str) else None,
+            content=json.dumps(existing_idempotency.response_body, default=str),
             status_code=existing_idempotency.response_code,
             media_type="application/json",
-        ) if not isinstance(existing_idempotency.response_body, dict) else existing_idempotency.response_body
-
-    from app.services.wallet_service import purchase_ticket
-    new_ticket = purchase_ticket(db=db, user_id=current_profile.id, ticket_in=ticket_in)
-
-    response_schema = TicketResponse.model_validate(new_ticket)
-    response_dict = response_schema.model_dump(mode="json")
-
-    if x_idempotency_key and req_hash:
-        save_idempotency_key(
-            db=db,
-            user_id=current_profile.id,
-            endpoint=endpoint,
-            key=x_idempotency_key,
-            request_hash=req_hash,
-            response_code=status.HTTP_201_CREATED,
-            response_body=response_dict,
         )
 
-    return new_ticket
+    from app.services.wallet_service import purchase_ticket
+    res = purchase_ticket(
+        db=db,
+        user_id=current_profile.id,
+        ticket_in=ticket_in,
+        idempotency_key=x_idempotency_key,
+        request_hash=req_hash,
+        endpoint=endpoint,
+    )
+
+    if isinstance(res, IdempotencyKey):
+        return Response(
+            content=json.dumps(res.response_body, default=str),
+            status_code=res.response_code,
+            media_type="application/json",
+        )
+
+    return res
 
 
 @router.post("/{ticket_id}/cancel", response_model=TicketResponse)

@@ -1,0 +1,16 @@
+{
+  "tc_id": "TS-SEC-03",
+  "step": "step1",
+  "timestamp": "2026-09-30T10:48:01.320482+07:00",
+  "method": "PATCH",
+  "url": "http://localhost:8000/api/v1/routes/6a34cb4f-3e16-4236-bfa7-5d39d2724460/start",
+  "headers": {
+    "Authorization": "Bearer eyJhbGci..."
+  },
+  "payload": null,
+  "status_code": 403,
+  "response": {
+    "detail": "Tuyến xe này không thuộc xe do bạn quản lý."
+  },
+  "response_time_ms": 2411.77
+}

@@ -65,12 +65,13 @@ def verify_supabase_jwt(token: str) -> Dict[str, Any]:
     payload: Optional[Dict[str, Any]] = None
 
     if alg == "HS256":
-        if not settings.SUPABASE_JWT_SECRET:
+        secret = settings.SUPABASE_JWT_SECRET or settings.SECRET_KEY
+        if not secret:
             raise credentials_exception
         try:
             payload = jwt.decode(
                 token,
-                settings.SUPABASE_JWT_SECRET,
+                secret,
                 algorithms=["HS256"],
                 options={"verify_aud": False},
             )

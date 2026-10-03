@@ -41,21 +41,9 @@ class ApiConfig {
     defaultValue: '7WSy0ek8OLEv1HZvB9oikhHT6hVrohUdCLShbK8S',
   );
 
-  /// URL template cho TileLayer raster tiles theo Goong Maps (Chuẩn dự án)
-  static String get goongTileUrl =>
-      'https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=$goongMapTilesKey';
-
-  /// URL template fallback (OpenStreetMap) khi Goong API key gặp sự cố hoặc 403
-  static String get fallbackTileUrl =>
-      'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-
-  /// URL template mặc định
-  static String get mapTileUrl => goongTileUrl;
-
-  /// Style JSON URL cho Goong Map Vector/Web Style
+  /// Style JSON URL chính thức cho Goong Map Vector Tiles (Chuẩn của Goong.io)
   static String get goongMapStyleUrl =>
       'https://tiles.goong.io/assets/goong_map_web.json?api_key=$goongMapTilesKey';
-
 
   /// Gọi ở đầu main() để báo lỗi rõ ràng nếu quên truyền dart-define,
   /// thay vì để app crash mơ hồ khi Supabase.initialize() nhận chuỗi rỗng.

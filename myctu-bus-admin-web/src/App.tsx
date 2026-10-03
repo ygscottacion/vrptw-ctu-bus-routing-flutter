@@ -1,8 +1,9 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { api, auth, WS_URL } from './services/api';
+import { api, setAuthFailureHandler, WS_URL } from './services/api';
+import { supabase } from './services/supabase';
 
-type User = { id: string; username: string; full_name?: string; phone?: string; role: string };
+type User = { id: string; role: string; email?: string | null; full_name?: string | null; phone?: string | null; username?: string };
 type Vehicle = { id: string; license_plate: string; capacity: number; driver?: User; driver_id?: string };
 type Incident = { id: string; title: string; description?: string; status: string; reported_at: string; driver?: User };
 type BusLocation = { vehicle_id: string; license_plate?: string; latitude: number; longitude: number; speed?: number; status?: string };
@@ -47,18 +48,47 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth.token) {
-      setLoading(false);
-      return;
-    }
-    api
-      .get<User>('/auth/me')
-      .then((u) => {
-        if (u.role !== 'admin') throw new Error('Không có quyền admin');
-        setUser(u);
-      })
-      .catch(() => auth.set(null))
-      .finally(() => setLoading(false));
+    setAuthFailureHandler(() => setUser(null));
+
+    const initSession = async () => {
+      try {
+        const {
+          data: { session }
+        } = await supabase.auth.getSession();
+        if (!session) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        const me = await api.get<User>('/auth/me');
+        if (me.role !== 'admin') {
+          await supabase.auth.signOut();
+          setUser(null);
+        } else {
+          setUser(me);
+        }
+      } catch {
+        await supabase.auth.signOut();
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initSession();
+
+    const {
+      data: { subscription }
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      setAuthFailureHandler(null);
+    };
   }, []);
 
   if (loading) return <main className="center">Đang khởi tạo ứng dụng Quản trị…</main>;
@@ -72,8 +102,8 @@ export default function App() {
           user ? (
             <Layout
               user={user}
-              onLogout={() => {
-                auth.set(null);
+              onLogout={async () => {
+                await supabase.auth.signOut();
                 setUser(null);
               }}
             />
@@ -95,15 +125,38 @@ function Login({ onSuccess }: { onSuccess: (user: User) => void }) {
     setBusy(true);
     setError('');
     const f = new FormData(e.currentTarget);
+    const email = String(f.get('email') || '').trim();
+    const password = String(f.get('password') || '');
+
     try {
-      const result = await api.login(String(f.get('username')), String(f.get('password')));
-      auth.set(result.access_token);
-      const user = await api.get<User>('/auth/me');
-      if (user.role !== 'admin') throw new Error('Tài khoản này không có quyền quản trị.');
-      onSuccess(user);
-    } catch (e) {
-      auth.set(null);
-      setError(e instanceof Error ? e.message : 'Đăng nhập thất bại');
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) {
+        if (authError.message.includes('Invalid login credentials')) {
+          throw new Error('Sai email hoặc mật khẩu.');
+        }
+        if (authError.message.includes('Email not confirmed')) {
+          throw new Error('Email chưa được xác nhận. Vui lòng kiểm tra hộp thư.');
+        }
+        throw new Error(authError.message || 'Đăng nhập thất bại.');
+      }
+
+      if (!data.session) {
+        throw new Error('Không thể khởi tạo phiên làm việc.');
+      }
+
+      const userProfile = await api.get<User>('/auth/me');
+      if (userProfile.role !== 'admin') {
+        await supabase.auth.signOut();
+        throw new Error('Tài khoản không có quyền truy cập trang quản trị.');
+      }
+
+      onSuccess(userProfile);
+    } catch (err) {
+      if (err instanceof Error && (err.message.includes('Failed to fetch') || err.message.includes('fetch'))) {
+        setError('Không thể kết nối đến máy chủ Backend (http://localhost:8000) hoặc Supabase. Vui lòng kiểm tra server Backend đã chạy chưa.');
+      } else {
+        setError(err instanceof Error ? err.message : 'Đăng nhập thất bại');
+      }
     } finally {
       setBusy(false);
     }
@@ -118,12 +171,12 @@ function Login({ onSuccess }: { onSuccess: (user: User) => void }) {
         <h1>Quản trị hệ thống</h1>
         <p>Đăng nhập bằng tài khoản quản trị để theo dõi realtime & điều hành.</p>
         <label>
-          Tên đăng nhập
-          <input name="username" defaultValue="admin" required autoFocus />
+          Email
+          <input name="email" type="email" required autoFocus placeholder="admin@test.example.com" autoComplete="email" />
         </label>
         <label>
           Mật khẩu
-          <input name="password" type="password" defaultValue="admin123" required />
+          <input name="password" type="password" required autoComplete="current-password" />
         </label>
         {error && <div className="error">{error}</div>}
         <button disabled={busy}>{busy ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
@@ -151,8 +204,8 @@ function Layout({ user, onLogout }: { user: User; onLogout: () => void }) {
         </nav>
         <button
           className="logout"
-          onClick={() => {
-            onLogout();
+          onClick={async () => {
+            await onLogout();
             navigate('/login');
           }}
         >
@@ -166,7 +219,7 @@ function Layout({ user, onLogout }: { user: User; onLogout: () => void }) {
             <small>Hệ thống giám sát Realtime & Quản lý mạng lưới</small>
           </div>
           <div className="admin">
-            {user.full_name || user.username}
+            {user.full_name || user.email || user.username || 'Admin'}
             <span>Quản trị viên</span>
           </div>
         </header>
@@ -651,12 +704,13 @@ function RouteGenerator() {
   const pollJobStatus = async (jobId: string) => {
     try {
       const job = await api.get<{ job_id: string; status: string; error_message?: string }>(`/routes/jobs/${jobId}`);
-      setJobStatus({ id: jobId, status: job.status, message: job.error_message });
-      if (job.status === 'QUEUED' || job.status === 'RUNNING') {
+      const normalizedStatus = job.status.toUpperCase();
+      setJobStatus({ id: jobId, status: normalizedStatus, message: job.error_message });
+      if (normalizedStatus === 'QUEUED' || normalizedStatus === 'RUNNING') {
         setTimeout(() => pollJobStatus(jobId), 2000);
       } else {
         setSubmitting(false);
-        if (job.status === 'SUCCEEDED') {
+        if (normalizedStatus === 'SUCCEEDED') {
           void loadRoutes();
         }
       }
@@ -680,7 +734,7 @@ function RouteGenerator() {
 
     try {
       const res = await api.post<{ job_id: string; status: string }>('/routes/admin/generate', payload);
-      setJobStatus({ id: res.job_id, status: res.status });
+      setJobStatus({ id: res.job_id, status: res.status.toUpperCase() });
       pollJobStatus(res.job_id);
     } catch (e) {
       setJobStatus({ id: '', status: 'FAILED', message: (e as Error).message });

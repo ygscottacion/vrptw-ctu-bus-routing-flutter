@@ -13,6 +13,6 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
-    role = Column(SQLEnum(UserRole), default=UserRole.PASSENGER, nullable=False)
+    role = Column(SQLEnum(UserRole, values_callable=lambda x: [e.value for e in x]), default=UserRole.PASSENGER, nullable=False)
     full_name = Column(String(100), nullable=True)
     phone = Column(String(20), nullable=True)

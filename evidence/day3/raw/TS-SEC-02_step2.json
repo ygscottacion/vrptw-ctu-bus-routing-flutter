@@ -1,0 +1,16 @@
+{
+  "tc_id": "TS-SEC-02",
+  "step": "step2",
+  "timestamp": "2026-09-30T10:47:58.908027+07:00",
+  "method": "PATCH",
+  "url": "http://localhost:8000/api/v1/routes/6a34cb4f-3e16-4236-bfa7-5d39d2724460/end",
+  "headers": {
+    "Authorization": "Bearer eyJhbGci..."
+  },
+  "payload": null,
+  "status_code": 409,
+  "response": {
+    "detail": "Không thể chuyển tuyến từ trạng thái 'pending' sang 'completed'."
+  },
+  "response_time_ms": 2366.78
+}
