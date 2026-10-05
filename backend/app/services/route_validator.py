@@ -162,10 +162,11 @@ class RouteValidator:
                 visited_station_ids.add(stop_id)
 
             # ── 3. Quy tắc: <= 90 phút (Chặn quá giờ) ──
-            duration = calculate_stops_duration_minutes(stops)
-            # Nếu route có trường duration_minutes được cung cấp trực tiếp
-            if duration is None and "duration_minutes" in route:
-                duration = float(route["duration_minutes"])
+            duration = route.get("driving_duration_minutes")
+            if duration is None:
+                leg_times = [stop.get("travel_time_from_previous_minutes") for stop in stops]
+                if leg_times and all(value is not None for value in leg_times):
+                    duration = sum(float(value) for value in leg_times)
 
             if duration is not None and duration > max_duration_minutes:
                 raise RouteValidationError(
@@ -225,6 +226,7 @@ class RouteValidator:
 
         assigned_ticket_ids: Set[str] = set()
         actual_total_stops = 0
+        expected_total_stops = 0
         depot_id_str = str(depot_location_id)
 
         for route, stops, tickets in created_routes:
@@ -267,24 +269,60 @@ class RouteValidator:
                     details={"route_id": route_id_str},
                 )
 
-            # 4. <= 90 phút (Kiểm tra duration giữa điểm dừng đầu và cuối nếu có arrival_time)
-            first_arrival = stops[0].arrival_time
-            last_arrival = stops[-1].arrival_time
-            if first_arrival and last_arrival and isinstance(first_arrival, datetime.datetime) and isinstance(last_arrival, datetime.datetime):
-                duration_m = (last_arrival - first_arrival).total_seconds() / 60.0
-                if duration_m > max_duration_minutes:
-                    raise RouteValidationError(
-                        error_code="OVERTIME_VIOLATION",
-                        message=f"Tuyến {route_id_str} có thời gian hành trình {duration_m:.1f} phút, vượt quá {max_duration_minutes} phút.",
-                        details={"route_id": route_id_str, "duration_minutes": duration_m},
-                    )
+            # 4. <= 90 phút xe đang chạy (không gồm chờ và phục vụ tại trạm)
+            driving_duration = getattr(route, "driving_duration_minutes", None)
+            if driving_duration is not None and driving_duration > max_duration_minutes:
+                raise RouteValidationError(
+                    error_code="OVERTIME_VIOLATION",
+                    message=f"Tuyến {route_id_str} có {driving_duration:.1f} phút xe di chuyển, vượt quá {max_duration_minutes} phút.",
+                    details={"route_id": route_id_str, "driving_duration_minutes": driving_duration},
+                )
 
-            # 5. Gán vé 1-1 chính xác
+            for stop in (stops[1:] if str(getattr(route, "trip_type", "")).lower() == "pickup" else []):
+                arrival = getattr(stop, "arrival_time", None)
+                tw_start = getattr(stop, "time_window_start", None)
+                tw_end = getattr(stop, "time_window_end", None)
+                if arrival is not None and tw_start is not None and tw_end is not None:
+                    comparable_arrival = arrival.replace(tzinfo=None) if arrival.tzinfo else arrival
+                    comparable_start = tw_start.replace(tzinfo=None) if tw_start.tzinfo else tw_start
+                    comparable_end = tw_end.replace(tzinfo=None) if tw_end.tzinfo else tw_end
+                    # Vehicles may arrive early and wait; service must not begin after window end.
+                    service_start = max(comparable_arrival, comparable_start)
+                    if service_start > comparable_end:
+                        raise RouteValidationError(
+                            error_code="TIME_WINDOW_VIOLATION",
+                            message=f"Tuyến {route_id_str} đến trạm {stop.location_id} ngoài time window.",
+                            details={"route_id": route_id_str, "location_id": str(stop.location_id)},
+                        )
+
+            school_arrival = getattr(route, "estimated_school_arrival_time", None)
+            if school_arrival is not None and str(getattr(route, "trip_type", "")).lower() == "pickup":
+                from app.services.student_routing import config as routing_config
+                from app.core.timezone import VN_TZ
+
+                session = routing_config.PICKUP_SESSIONS.get(str(route.session_id), {})
+                school_start = session.get("school_start")
+                if school_start:
+                    local_arrival = school_arrival
+                    if local_arrival.tzinfo is None:
+                        local_arrival = local_arrival.replace(tzinfo=datetime.timezone.utc)
+                    local_arrival = local_arrival.astimezone(VN_TZ)
+                    arrival_minutes = local_arrival.hour * 60 + local_arrival.minute
+                    class_minutes = parse_time_to_minutes(school_start)
+                    deadline = class_minutes - routing_config.CLASS_ARRIVAL_BUFFER_MINUTES
+                    if arrival_minutes > deadline:
+                        raise RouteValidationError(
+                            error_code="SCHOOL_ARRIVAL_BUFFER_VIOLATION",
+                            message=f"Tuyến {route_id_str} đến trường sau giờ yêu cầu (ít nhất {routing_config.CLASS_ARRIVAL_BUFFER_MINUTES} phút trước giờ học).",
+                            details={"route_id": route_id_str, "arrival_time": local_arrival.isoformat(), "deadline_minutes": deadline},
+                        )
+
+            # 5. Mỗi trạm được ghé một lần; nhiều vé có thể cùng trạm đón.
             ticket_loc_ids = [str(t.pickup_location_id) for t in tickets]
-            if set(pickup_ids) != set(ticket_loc_ids) or len(ticket_loc_ids) != len(set(ticket_loc_ids)):
+            if set(pickup_ids) != set(ticket_loc_ids):
                 raise RouteValidationError(
                     error_code="ROUTE_STOP_COUNT_MISMATCH",
-                    message=f"Route {route_id_str} stops and tickets are not one-to-one.",
+                    message=f"Route {route_id_str} pickup stops do not match ticket pickup stations.",
                 )
 
             for t in tickets:
@@ -297,6 +335,7 @@ class RouteValidator:
                     )
 
             actual_total_stops += len(stops)
+            expected_total_stops += len(set(ticket_loc_ids)) + 1  # unique pickup stations + depot
             assigned_ticket_ids.update(str(t.id) for t in tickets)
 
         # 6. Đủ stop (Toàn bộ tickets đã gán không thừa không thiếu)
@@ -307,8 +346,8 @@ class RouteValidator:
                 details={"assigned": len(assigned_ticket_ids), "expected": expected_tickets_count},
             )
 
-        if actual_total_stops != expected_tickets_count + len(created_routes):
+        if actual_total_stops != expected_total_stops:
             raise RouteValidationError(
                 error_code="ROUTE_STOP_COUNT_MISMATCH",
-                message="Tổng số điểm dừng không bằng số depot + số vé được phân bổ.",
+                message="Tổng số điểm dừng không bằng số depot + số trạm đón duy nhất được phục vụ.",
             )

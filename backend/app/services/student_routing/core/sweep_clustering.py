@@ -8,8 +8,7 @@ class SweepClusterer:
     Thuật toán Sweep (Sweep Algorithm) — Khởi tạo Lời giải Ban đầu.
     - Tính góc cực (Polar Angle) của từng trạm so với Depot/CTU.
     - Sắp xếp trạm theo góc cực tăng dần.
-    - Phân cụm trạm vào từng xe dựa trên TỔNG NHU CẦU SINH VIÊN (Student Demand),
-      ĐẢM BẢO KHÔNG VƯỢT QUÁ CAPACITY CỦA XE (45 chỗ).
+        - Phân cụm trạm theo sức chứa và ước lượng thời gian xe đang di chuyển.
     """
 
     @staticmethod
@@ -56,9 +55,7 @@ class SweepClusterer:
             curr_lat, curr_lng = s_lat, s_lng
 
         total_dist += self.calculate_distance_km(curr_lat, curr_lng, depot_lat, depot_lng)
-        travel_time_min = (total_dist / average_speed_km_h) * 60.0
-        dwell_time_min = len(stops) * 1.0
-        return travel_time_min + dwell_time_min
+        return (total_dist / average_speed_km_h) * 60.0
 
     def create_initial_routes(
         self,

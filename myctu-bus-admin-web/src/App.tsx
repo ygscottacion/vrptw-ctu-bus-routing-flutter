@@ -8,7 +8,7 @@ type Vehicle = { id: string; license_plate: string; capacity: number; driver?: U
 type Incident = { id: string; title: string; description?: string; status: string; reported_at: string; driver?: User };
 type BusLocation = { vehicle_id: string; license_plate?: string; latitude: number; longitude: number; speed?: number; status?: string };
 type LocationItem = { id: string; code?: string; name: string; latitude: number; longitude: number };
-type RouteStop = { id: string; route_id: string; location_id: string; stop_order: number; arrival_time?: string; location?: LocationItem };
+type RouteStop = { id: string; route_id: string; location_id: string; stop_order: number; arrival_time?: string; departure_time?: string; time_window_start?: string; time_window_end?: string; location?: LocationItem };
 type RouteItem = {
   id: string;
   route_job_id?: string;
@@ -18,6 +18,11 @@ type RouteItem = {
   vehicle_id?: string;
   status: 'pending' | 'approved' | 'rejected' | 'in_progress' | 'completed';
   total_distance: number;
+  driving_duration_minutes?: number;
+  waiting_duration_minutes?: number;
+  service_duration_minutes?: number;
+  departure_time?: string;
+  estimated_school_arrival_time?: string;
   stops: RouteStop[];
   passenger_count?: number;
   vehicle?: Vehicle;
@@ -543,7 +548,7 @@ function Vehicles() {
                 <option value="">-- Chưa gán tài xế --</option>
                 {drivers.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.full_name || d.username}
+                    {d.full_name || d.email || d.username || d.id}
                   </option>
                 ))}
               </select>
@@ -606,7 +611,7 @@ function Users() {
         rows={filtered.map((u) => (
           <tr key={u.id}>
             <td>
-              <b>{u.username}</b>
+              <b>{u.email || u.username || u.id}</b>
             </td>
             <td>{u.full_name || '—'}</td>
             <td>{u.phone || '—'}</td>
@@ -833,7 +838,7 @@ function RouteGenerator() {
       <section className="panel" style={{ marginTop: 20 }}>
         <h2>Danh sách Tuyến buýt & Luồng Duyệt lộ trình ({routes.length})</h2>
         <Table
-          heads={['Mã / ID Tuyến', 'Ngày chạy', 'Ca / Chiều', 'Xe gán', 'Số SV đón', 'Quãng đường', 'Trạng thái', 'Thao tác duyệt / Manifest']}
+          heads={['Mã / ID Tuyến', 'Ngày chạy', 'Ca / Chiều', 'Xe gán', 'Số SV đón', 'Quãng đường', 'Thời gian chạy', 'Trạng thái', 'Thao tác duyệt / Manifest']}
           rows={routes.map((r) => (
             <tr key={r.id}>
               <td>
@@ -846,6 +851,7 @@ function RouteGenerator() {
               <td>{r.vehicle?.license_plate || (r.vehicle_id ? `Xe #${r.vehicle_id.slice(0, 8)}` : 'Chưa gán xe')}</td>
               <td>{r.passenger_count ?? 0} sinh viên</td>
               <td>{r.total_distance?.toFixed(1) ?? '0.0'} km</td>
+              <td>{r.driving_duration_minutes != null ? `${r.driving_duration_minutes.toFixed(1)} phút` : '—'}</td>
               <td>
                 <span className={`badge ${r.status}`}>
                   {r.status === 'pending'
@@ -915,6 +921,13 @@ function RouteGenerator() {
               Xe phụ trách: <b>{selectedRouteForStops.vehicle?.license_plate || 'Chưa phân công'}</b> • Sức chứa:{' '}
               {selectedRouteForStops.vehicle?.capacity ?? '—'} chỗ • Số sinh viên gán: <b>{selectedRouteForStops.passenger_count ?? 0}</b>
             </p>
+            <p style={{ color: '#666', fontSize: 13 }}>
+              Xuất phát: <b>{selectedRouteForStops.departure_time ? new Date(selectedRouteForStops.departure_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—'}</b>
+              {' • '}Về trường: <b>{selectedRouteForStops.estimated_school_arrival_time ? new Date(selectedRouteForStops.estimated_school_arrival_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—'}</b>
+              {' • '}Thời gian xe chạy: <b>{selectedRouteForStops.driving_duration_minutes?.toFixed(1) ?? '—'} phút</b>
+              {' • '}Chờ: <b>{selectedRouteForStops.waiting_duration_minutes?.toFixed(1) ?? '—'} phút</b>
+              {' • '}Đón khách: <b>{selectedRouteForStops.service_duration_minutes?.toFixed(1) ?? '—'} phút</b>
+            </p>
 
             <table style={{ width: '100%', marginTop: 15, borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -923,6 +936,8 @@ function RouteGenerator() {
                   <th style={{ padding: 8 }}>Mã trạm</th>
                   <th style={{ padding: 8 }}>Tên trạm dừng</th>
                   <th style={{ padding: 8 }}>Dự kiến đến</th>
+                  <th style={{ padding: 8 }}>Khung đón</th>
+                  <th style={{ padding: 8 }}>Đón xong / rời trạm</th>
                 </tr>
               </thead>
               <tbody>
@@ -939,6 +954,14 @@ function RouteGenerator() {
                       </td>
                       <td style={{ padding: 8 }}>
                         {stop.arrival_time ? new Date(stop.arrival_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        {stop.time_window_start && stop.time_window_end
+                          ? `${new Date(stop.time_window_start).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}–${new Date(stop.time_window_end).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
+                          : '—'}
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        {stop.departure_time ? new Date(stop.departure_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>
                     </tr>
                   ))}

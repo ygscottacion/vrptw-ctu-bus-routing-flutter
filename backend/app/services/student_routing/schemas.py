@@ -82,6 +82,9 @@ class Stop(BaseModel):
     students_dropped: int = 0
     current_load: int = 0
     within_time_window: bool = True
+    time_window_start: Optional[str] = None
+    time_window_end: Optional[str] = None
+    travel_time_from_previous_minutes: float = 0.0
 
 
 class Route(BaseModel):
@@ -93,6 +96,9 @@ class Route(BaseModel):
     arrival_at_school: str
     total_students: int
     total_distance_km: float
+    driving_duration_minutes: float = 0.0
+    waiting_duration_minutes: float = 0.0
+    service_duration_minutes: float = 0.0
     stops: List[Stop]
 
 

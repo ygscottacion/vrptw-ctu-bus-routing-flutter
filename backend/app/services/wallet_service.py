@@ -13,6 +13,7 @@ from app.models.idempotency_key import IdempotencyKey
 from app.schemas.ticket import TicketReserveRequest, TicketResponse
 from app.api.v1.endpoints.tickets import validate_booking_deadline
 from app.core.idempotency import save_idempotency_key
+from app.services.ticket_code import generate_ticket_code
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +93,10 @@ def purchase_ticket(
     # 5. Deduct balance & Record purchase
     wallet.balance -= TICKET_PRICE_VND
 
-    qr_code = f"BUS-{uuid.uuid4().hex[:6].upper()}"
+    ticket_id = uuid.uuid4()
+    qr_code = generate_ticket_code(db, ticket_in.service_date, ticket_in.session_id)
     new_ticket = Ticket(
-        id=uuid.uuid4(),
+        id=ticket_id,
         user_id=user_id,
         route_id=None,
         service_date=ticket_in.service_date,

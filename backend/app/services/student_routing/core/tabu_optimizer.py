@@ -150,14 +150,16 @@ class TabuSearchOptimizer:
         travel_time_matrix: List[List[float]],
         point_index_map: Dict[str, int],
         vehicle_capacities: List[int] = None,
-        departure_time_mins: float = 330.0
+        departure_time_mins: float = 330.0,
+        arrival_deadline_mins: float = None,
+        trip_type: str = "PICKUP"
     ) -> Tuple[List[List[Dict[str, Any]]], EvaluationResult]:
         """
         Thực thi thuật toán Tabu Search để tối ưu Initial Solution từ Sweep.
         """
         if not initial_routes:
             eval_res = self.evaluator.evaluate_solution(
-                [], depot, distance_matrix, travel_time_matrix, point_index_map, vehicle_capacities, departure_time_mins
+                [], depot, distance_matrix, travel_time_matrix, point_index_map, vehicle_capacities, departure_time_mins, arrival_deadline_mins, trip_type
             )
             return [], eval_res
 
@@ -165,7 +167,7 @@ class TabuSearchOptimizer:
         best_solution = copy.deepcopy(initial_routes)
 
         best_eval = self.evaluator.evaluate_solution(
-            best_solution, depot, distance_matrix, travel_time_matrix, point_index_map, vehicle_capacities, departure_time_mins
+            best_solution, depot, distance_matrix, travel_time_matrix, point_index_map, vehicle_capacities, departure_time_mins, arrival_deadline_mins, trip_type
         )
 
         tabu_list = TabuList(base_tenure=self.base_tenure)
@@ -186,7 +188,7 @@ class TabuSearchOptimizer:
 
             for candidate_routes, move_key in candidates:
                 cand_eval = self.evaluator.evaluate_solution(
-                    candidate_routes, depot, distance_matrix, travel_time_matrix, point_index_map, vehicle_capacities, departure_time_mins
+                    candidate_routes, depot, distance_matrix, travel_time_matrix, point_index_map, vehicle_capacities, departure_time_mins, arrival_deadline_mins, trip_type
                 )
 
                 if not tabu_list.is_tabu(move_key, iteration, cand_eval.objective_value, best_eval.objective_value):

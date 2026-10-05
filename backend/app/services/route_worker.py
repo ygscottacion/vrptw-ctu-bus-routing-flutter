@@ -90,7 +90,6 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
     if not created_routes:
         raise RouteStopValidationError(job_id, "Solver returned no routes.")
     assigned_ids: set[str] = set()
-    actual_stops = 0
     for route, stops, tickets in created_routes:
         if not stops or str(stops[0].location_id) != str(depot_location_id) or stops[0].stop_order != 1:
             raise RouteStopValidationError(job_id, f"Route {route.id} has no valid depot at stop 1.")
@@ -108,7 +107,6 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
             raise RouteStopValidationError(job_id, f"Route {route.id} passenger_count mismatch.")
         if route.passenger_count > 45:
             raise RouteStopValidationError(job_id, f"Route {route.id} exceeds maximum capacity of 45 passengers.", "OVERLOAD_VIOLATION")
-        actual_stops += len(stops)
         assigned_ids.update(str(ticket.id) for ticket in tickets)
     if len(assigned_ids) != expected_tickets_count:
         raise RouteStopValidationError(job_id, f"Assigned {len(assigned_ids)} of {expected_tickets_count} tickets.", "ROUTE_STOP_COUNT_MISMATCH")
@@ -241,7 +239,12 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                     trip_type=job.trip_type,
                     vehicle_id=_db_id(db, vehicle_id) if vehicle_id else None,
                     status=RouteStatus.PENDING,
-                    total_distance=float(route_info.get("total_distance_km", 0.0))
+                    total_distance=float(route_info.get("total_distance_km", 0.0)),
+                    driving_duration_minutes=float(route_info.get("driving_duration_minutes", 0.0)),
+                    waiting_duration_minutes=float(route_info.get("waiting_duration_minutes", 0.0)),
+                    service_duration_minutes=float(route_info.get("service_duration_minutes", 0.0)),
+                    departure_time=_parse_solver_time(route_info.get("departure_time"), job.service_date),
+                    estimated_school_arrival_time=_parse_solver_time(route_info.get("arrival_at_school"), job.service_date)
                 )
                 db.add(route)
                 raw_stops = list(route_info.get("ordered_stops") or [])
@@ -260,7 +263,10 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                         route_id=route.id,
                         location_id=_db_id(db, location_id),
                         stop_order=stop_order,
-                        arrival_time=_parse_solver_time(stop_data.get("arrival_time"), job.service_date)
+                        arrival_time=_parse_solver_time(stop_data.get("arrival_time"), job.service_date),
+                        departure_time=_parse_solver_time(stop_data.get("departure_time"), job.service_date),
+                        time_window_start=_parse_solver_time(stop_data.get("time_window_start"), job.service_date),
+                        time_window_end=_parse_solver_time(stop_data.get("time_window_end"), job.service_date)
                     )
                     db.add(route_stop)
                     route_stops.append(route_stop)

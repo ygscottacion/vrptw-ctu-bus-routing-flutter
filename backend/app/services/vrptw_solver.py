@@ -110,13 +110,22 @@ class VRPTWSolverService:
                         "name": s.station_name,
                         "arrival_time": s.arrival_time,
                         "departure_time": s.departure_time,
+                        "time_window_start": s.time_window_start,
+                        "time_window_end": s.time_window_end,
+                        "travel_time_from_previous_minutes": s.travel_time_from_previous_minutes,
                         "demand": s.students_picked
                     })
 
                 final_routes.append({
+                    "trip_type": route_obj.trip_type.value,
                     "vehicle_id": route_obj.vehicle_id,
                     "total_demand": route_obj.total_students,
                     "total_distance_km": route_obj.total_distance_km,
+                    "driving_duration_minutes": route_obj.driving_duration_minutes,
+                    "waiting_duration_minutes": route_obj.waiting_duration_minutes,
+                    "service_duration_minutes": route_obj.service_duration_minutes,
+                    "departure_time": route_obj.departure_time,
+                    "arrival_at_school": route_obj.arrival_at_school,
                     "ordered_stops": ordered_stops
                 })
 

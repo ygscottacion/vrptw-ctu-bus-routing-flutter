@@ -126,6 +126,9 @@ class ApiService {
                 'longitude': loc['longitude'],
                 'stop_order': s['stop_order'],
                 'arrival_time': s['arrival_time'],
+                'departure_time': s['departure_time'],
+                'time_window_start': s['time_window_start'],
+                'time_window_end': s['time_window_end'],
               };
             }).toList(),
           };
@@ -211,6 +214,9 @@ class ApiService {
               'location': loc,
               'stop_order': s['stop_order'],
               'arrival_time': s['arrival_time'],
+              'departure_time': s['departure_time'],
+              'time_window_start': s['time_window_start'],
+              'time_window_end': s['time_window_end'],
             };
           }).toList(),
         };

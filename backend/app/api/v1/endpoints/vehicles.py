@@ -1,10 +1,11 @@
 from typing import Any, List, Optional
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api import deps
 from app.crud import crud_vehicle
-from app.models.user import User
+from app.models.profile import Profile
 from app.schemas.vehicle import VehicleCreate, VehicleUpdate, VehicleResponse
 
 router = APIRouter()
@@ -24,7 +25,7 @@ def read_vehicles(
 def create_vehicle(
     vehicle_in: VehicleCreate,
     db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
+    current_admin: Profile = Depends(deps.get_current_admin)
 ) -> Any:
     """
     Create a new bus vehicle. Admin only.
@@ -33,7 +34,7 @@ def create_vehicle(
 
 @router.get("/{vehicle_id}", response_model=VehicleResponse)
 def read_vehicle(
-    vehicle_id: int,
+    vehicle_id: UUID,
     db: Session = Depends(deps.get_db)
 ) -> Any:
     """
@@ -46,10 +47,10 @@ def read_vehicle(
 
 @router.put("/{vehicle_id}", response_model=VehicleResponse)
 def update_vehicle(
-    vehicle_id: int,
+    vehicle_id: UUID,
     vehicle_in: VehicleUpdate,
     db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
+    current_admin: Profile = Depends(deps.get_current_admin)
 ) -> Any:
     """
     Update vehicle specifications or assigned driver. Admin only.
@@ -61,10 +62,10 @@ def update_vehicle(
 
 @router.put("/{vehicle_id}/driver", response_model=VehicleResponse)
 def assign_vehicle_driver(
-    vehicle_id: int,
-    driver_id: Optional[int] = None,
+    vehicle_id: UUID,
+    driver_id: Optional[UUID] = None,
     db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
+    current_admin: Profile = Depends(deps.get_current_admin)
 ) -> Any:
     """
     Assign or unassign a driver for a specific vehicle. Admin only.
@@ -76,9 +77,9 @@ def assign_vehicle_driver(
 
 @router.delete("/{vehicle_id}", response_model=VehicleResponse)
 def delete_vehicle(
-    vehicle_id: int,
+    vehicle_id: UUID,
     db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
+    current_admin: Profile = Depends(deps.get_current_admin)
 ) -> Any:
     """
     Delete a vehicle by ID. Admin only.

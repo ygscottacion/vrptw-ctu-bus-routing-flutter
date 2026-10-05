@@ -10,6 +10,7 @@ from app.api import deps
 from app.core.idempotency import process_idempotency_key, save_idempotency_key
 from app.models.profile import Profile
 from app.models.location import Location
+from app.models.vehicle import Vehicle
 from app.models.ticket import Ticket, TicketStatus
 from app.schemas.ticket import TicketReserveRequest, TicketResponse, QRVerifyRequest, TicketVerifyResponse
 
@@ -192,11 +193,21 @@ def verify_ticket_qr(
     code_str = request.qr_code.strip()
 
     # 1. Tìm kiếm vé trong CSDL theo qr_code hoặc id (UUID)
-    ticket = db.query(Ticket).filter(Ticket.qr_code == code_str).first()
+    ticket = (
+        db.query(Ticket)
+        .filter(Ticket.qr_code == code_str)
+        .with_for_update()
+        .first()
+    )
     if not ticket:
         try:
             val_uuid = uuid.UUID(code_str)
-            ticket = db.query(Ticket).filter(Ticket.id == val_uuid).first()
+            ticket = (
+                db.query(Ticket)
+                .filter(Ticket.id == val_uuid)
+                .with_for_update()
+                .first()
+            )
         except (ValueError, TypeError):
             pass
 
@@ -210,7 +221,7 @@ def verify_ticket_qr(
     if ticket.status == TicketStatus.USED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Vé này đã được điểm danh sử dụng trước đó.",
+            detail="Vé này đã được điểm danh trước đó và đã sử dụng.",
         )
 
     if ticket.status in (TicketStatus.RESERVED, TicketStatus.PAID_PENDING_ROUTE):
@@ -240,15 +251,22 @@ def verify_ticket_qr(
         )
 
     from app.models.route import RouteStatus
-    if route.status == RouteStatus.COMPLETED:
+    if route.status in (RouteStatus.COMPLETED, RouteStatus.REJECTED):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Tuyến xe này đã hoàn tất chuyến.",
+            detail="Tuyến xe này đã kết thúc hoặc bị từ chối.",
         )
 
-    # 4. Kiểm tra phân công xe đối với tài xế quét (nếu người quét là Tài xế)
+    # 4. Tài xế chỉ được điểm danh vé thuộc tuyến gắn với xe mình phụ trách.
     if current_driver.role == deps.ProfileRole.DRIVER:
-        if route.vehicle and route.vehicle.driver_id != current_driver.id:
+        if not route.vehicle_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tuyến xe chưa được phân công cho phương tiện nào.",
+            )
+
+        vehicle = db.query(Vehicle).filter(Vehicle.id == route.vehicle_id).first()
+        if not vehicle or vehicle.driver_id != current_driver.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Vé này thuộc tuyến buýt do tài xế khác phụ trách.",

@@ -33,6 +33,11 @@ class Route(Base):
         nullable=False,
     )
     total_distance = Column(Float, default=0.0)
+    driving_duration_minutes = Column(Float, nullable=True)
+    waiting_duration_minutes = Column(Float, nullable=True)
+    service_duration_minutes = Column(Float, nullable=True)
+    departure_time = Column(DateTime(timezone=True), nullable=True)
+    estimated_school_arrival_time = Column(DateTime(timezone=True), nullable=True)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
     approved_at = Column(DateTime(timezone=True), nullable=True)
     rejection_reason = Column(String(255), nullable=True)
@@ -66,6 +71,9 @@ class RouteStop(Base):
     route_id = Column(UUID(as_uuid=True), ForeignKey("routes.id", ondelete="CASCADE"), nullable=False, index=True)
     location_id = Column(UUID(as_uuid=True), ForeignKey("locations.id", ondelete="CASCADE"), nullable=False, index=True)
     arrival_time = Column(DateTime(timezone=True), nullable=True)
+    departure_time = Column(DateTime(timezone=True), nullable=True)
+    time_window_start = Column(DateTime(timezone=True), nullable=True)
+    time_window_end = Column(DateTime(timezone=True), nullable=True)
     stop_order = Column(Integer, nullable=False)
 
     # Relationships

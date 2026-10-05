@@ -3,14 +3,16 @@ from typing import List, Optional
 from datetime import date
 from sqlalchemy.orm import Session
 from app.models.ticket import Ticket, TicketStatus
+from app.services.ticket_code import generate_ticket_code
 
 
 def create_tickets(db: Session, user_id: uuid.UUID, quantity: int = 1, **ticket_fields) -> List[Ticket]:
     tickets = []
     for _ in range(quantity):
-        qr_code = f"BUS-{uuid.uuid4().hex[:6].upper()}"
+        ticket_id = uuid.uuid4()
+        qr_code = generate_ticket_code(db, ticket_fields["service_date"], ticket_fields["session_id"])
         db_ticket = Ticket(
-            id=uuid.uuid4(),
+            id=ticket_id,
             user_id=user_id,
             route_id=None,
             qr_code=qr_code,
@@ -18,6 +20,7 @@ def create_tickets(db: Session, user_id: uuid.UUID, quantity: int = 1, **ticket_
             **ticket_fields,
         )
         db.add(db_ticket)
+        db.flush()
         tickets.append(db_ticket)
 
     db.commit()

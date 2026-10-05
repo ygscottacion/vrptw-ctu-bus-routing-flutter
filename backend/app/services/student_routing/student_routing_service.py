@@ -153,6 +153,22 @@ class StudentRoutingService:
             all_points, time_str_or_session=options.session_id.value
         )
 
+        session_info = config.PICKUP_SESSIONS.get(options.session_id.value, {})
+        class_deadline_mins = None
+        if options.trip_type.value == "PICKUP" and session_info.get("school_start"):
+            class_hour, class_minute = map(int, session_info["school_start"].split(":"))
+            class_deadline_mins = class_hour * 60 + class_minute - config.CLASS_ARRIVAL_BUFFER_MINUTES
+            # Dynamic per-station pickup window: [latest - 45m, latest].
+            # latest accounts for the direct road travel time from that station to school.
+            school_index = point_index_map["SCHOOL"]
+            for station in feasible_stations:
+                station_index = point_index_map[station.id]
+                return_drive_mins = float(ttime_matrix[station_index][school_index])
+                latest_pickup = class_deadline_mins - return_drive_mins - config.PICKUP_SERVICE_MINUTES
+                earliest_pickup = latest_pickup - config.STATION_TIME_WINDOW_MINUTES
+                station.time_window_start = f"{int(earliest_pickup // 60) % 24:02d}:{int(earliest_pickup % 60):02d}"
+                station.time_window_end = f"{int(latest_pickup // 60) % 24:02d}:{int(latest_pickup % 60):02d}"
+
         depot_dict = {"id": "SCHOOL", "lat": school_loc["lat"], "lng": school_loc["lng"]}
         station_dicts = []
         for st in feasible_stations:
@@ -202,7 +218,9 @@ class StudentRoutingService:
                 travel_time_matrix=ttime_matrix,
                 point_index_map=point_index_map,
                 vehicle_capacities=vehicle_capacities,
-                departure_time_mins=departure_mins
+                departure_time_mins=departure_mins,
+                arrival_deadline_mins=class_deadline_mins,
+                trip_type=options.trip_type.value
             )
         except Exception as exc:
             import logging
@@ -210,6 +228,33 @@ class StudentRoutingService:
                 f"Tabu Search optimization failed: {exc}. Falling back to Sweep initial routes."
             )
             optimized_routes = initial_routes
+            best_eval = self.evaluator.evaluate_solution(
+                optimized_routes,
+                depot_dict,
+                dist_matrix,
+                ttime_matrix,
+                point_index_map,
+                vehicle_capacities,
+                departure_mins,
+                class_deadline_mins,
+                options.trip_type.value,
+            )
+
+        if len(optimized_routes) > len(vehicles):
+            return self.response_formatter.format_error(
+                options.session_id,
+                options.trip_type,
+                "INSUFFICIENT_VEHICLES",
+                f"Cần {len(optimized_routes)} xe để phục vụ các trạm nhưng hiện chỉ có {len(vehicles)} xe.",
+            )
+
+        if not best_eval.is_feasible():
+            return self.response_formatter.format_error(
+                options.session_id,
+                options.trip_type,
+                "INFEASIBLE_TIME_CONSTRAINTS",
+                "Không tìm được phương án thỏa time window, giờ đến trường và giới hạn 90 phút di chuyển.",
+            )
 
         # ── 6. Response Formatting ─────────────────────────────────────────────
         return self.response_formatter.format_success(

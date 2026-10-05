@@ -13,6 +13,9 @@ class RouteStopResponse(BaseModel):
     location_id: UUID
     stop_order: int
     arrival_time: Optional[datetime] = None
+    departure_time: Optional[datetime] = None
+    time_window_start: Optional[datetime] = None
+    time_window_end: Optional[datetime] = None
     location: Optional[LocationResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -27,6 +30,11 @@ class RouteResponse(BaseModel):
     vehicle_id: Optional[UUID] = None
     status: RouteStatus
     total_distance: float
+    driving_duration_minutes: Optional[float] = None
+    waiting_duration_minutes: Optional[float] = None
+    service_duration_minutes: Optional[float] = None
+    departure_time: Optional[datetime] = None
+    estimated_school_arrival_time: Optional[datetime] = None
     stops: List[RouteStopResponse] = []
     passenger_count: Optional[int] = None
     approved_by: Optional[UUID] = None

@@ -19,7 +19,11 @@ class EvaluationResult:
         capacity_penalty: float,
         ride_time_penalty: float,
         total_penalty: float,
-        objective_value: float
+        objective_value: float,
+        route_duration_violations: int = 0,
+        school_arrival_violations: int = 0,
+        time_window_violations: int = 0,
+        time_window_lateness: float = 0.0
     ):
         self.total_distance = round(total_distance, 2)
         self.total_travel_time = round(total_travel_time, 2)
@@ -33,10 +37,16 @@ class EvaluationResult:
         self.ride_time_penalty = round(ride_time_penalty, 2)
         self.total_penalty = round(total_penalty, 2)
         self.objective_value = round(objective_value, 2)
+        self.route_duration_violations = route_duration_violations
+        self.school_arrival_violations = school_arrival_violations
+        self.time_window_violations = time_window_violations
+        self.time_window_lateness = time_window_lateness
 
     def is_feasible(self) -> bool:
         """Kiểm tra giải pháp có hoàn toàn khả thi không (không vi phạm HARD constraints)"""
-        return self.capacity_violations == 0 and self.ride_time_violations == 0
+        return (self.capacity_violations == 0 and self.ride_time_violations == 0
+                and self.route_duration_violations == 0 and self.school_arrival_violations == 0
+                and self.time_window_violations == 0)
 
     def __repr__(self) -> str:
         return (f"EvaluationResult(dist={self.total_distance}km, "
@@ -67,6 +77,7 @@ class SolutionEvaluator:
         self.capacity_penalty_weight = capacity_penalty_weight
         self.ride_time_penalty_weight = ride_time_penalty_weight
         self.max_ride_time_minutes = max_ride_time_minutes
+        self.max_route_driving_minutes = config.MAX_ROUTE_DRIVING_MINUTES
 
     @staticmethod
     def _parse_time_to_minutes(time_str: str) -> float:
@@ -85,7 +96,9 @@ class SolutionEvaluator:
         travel_time_matrix: List[List[float]],
         point_index_map: Dict[str, int],
         vehicle_capacity: int = config.VEHICLE_CAPACITY,
-        departure_time_mins: float = 330.0  # Mặc định 05:30 (330 phút)
+        departure_time_mins: float = 330.0,  # Mặc định 05:30 (330 phút)
+        arrival_deadline_mins: float = None,
+        trip_type: str = "PICKUP"
     ) -> EvaluationResult:
         """
         Lượng giá 1 route đơn lẻ (danh sách trạm + depot).
@@ -98,8 +111,14 @@ class SolutionEvaluator:
         total_travel_time = 0.0
         total_early = 0.0
         total_late = 0.0
+        time_window_lateness = 0.0
         capacity_violations = 0
         ride_time_violations = 0
+        route_duration_violations = 0
+        school_arrival_violations = 0
+        time_window_violations = 0
+        route_duration_excess = 0.0
+        pickup_completion_times = []
 
         curr_load = 0
         current_time = departure_time_mins
@@ -122,13 +141,7 @@ class SolutionEvaluator:
             if curr_load > vehicle_capacity:
                 capacity_violations += 1
 
-            # 3. Ride Time Check (Hard Constraint = 45 mins)
-            # RideTime_i = ArrivalTime_i - RouteDepartureTime
-            ride_time = current_time - departure_time_mins
-            if ride_time > self.max_ride_time_minutes:
-                ride_time_violations += 1
-
-            # 4. Soft Time Window Check
+            # Pickup time windows are hard constraints; arriving early means waiting.
             tw_start_str = stop.get("time_window_start")
             tw_end_str = stop.get("time_window_end")
 
@@ -144,6 +157,16 @@ class SolutionEvaluator:
                 elif current_time > tw_end:
                     late = current_time - tw_end
                     total_late += late
+                    if trip_type == "PICKUP":
+                        time_window_violations += 1
+                        time_window_lateness += late
+
+            # Thời gian dừng đón làm tăng lịch đồng hồ nhưng không tính vào driving limit.
+            if trip_type == "PICKUP":
+                current_time += config.PICKUP_SERVICE_MINUTES
+                pickup_completion_times.append(current_time)
+            else:
+                pickup_completion_times.append(current_time)
 
             prev_idx = curr_idx
 
@@ -151,14 +174,34 @@ class SolutionEvaluator:
         depot_idx = point_index_map[depot["id"]]
         total_distance += distance_matrix[prev_idx][depot_idx]
         total_travel_time += travel_time_matrix[prev_idx][depot_idx]
+        current_time += travel_time_matrix[prev_idx][depot_idx]
+        if trip_type == "PICKUP":
+            ride_time_violations = sum(
+                1 for pickup_done_at in pickup_completion_times
+                if current_time - pickup_done_at > self.max_ride_time_minutes
+            )
+        else:
+            ride_time_violations = sum(
+                1 for pickup_done_at in pickup_completion_times
+                if pickup_done_at - departure_time_mins > self.max_ride_time_minutes
+            )
+        if total_travel_time > self.max_route_driving_minutes:
+            route_duration_violations = 1
+            route_duration_excess = total_travel_time - self.max_route_driving_minutes
+        if arrival_deadline_mins is not None and current_time > arrival_deadline_mins:
+            school_arrival_violations = 1
+            total_late += current_time - arrival_deadline_mins
 
         # Tính toán Penalties
         early_penalty = total_early * self.early_weight
         late_penalty = total_late * self.late_weight
+        hard_time_window_penalty = time_window_lateness * 10000.0
         cap_penalty = capacity_violations * self.capacity_penalty_weight
         ride_penalty = ride_time_violations * self.ride_time_penalty_weight
+        duration_penalty = route_duration_excess * 10000.0
+        school_penalty = school_arrival_violations * 10000.0
 
-        total_penalty = early_penalty + late_penalty + cap_penalty + ride_penalty
+        total_penalty = early_penalty + late_penalty + hard_time_window_penalty + cap_penalty + ride_penalty + duration_penalty + school_penalty
         objective_value = (total_distance * self.distance_weight) + total_penalty
 
         return EvaluationResult(
@@ -173,7 +216,11 @@ class SolutionEvaluator:
             capacity_penalty=cap_penalty,
             ride_time_penalty=ride_penalty,
             total_penalty=total_penalty,
-            objective_value=objective_value
+            objective_value=objective_value,
+            route_duration_violations=route_duration_violations,
+            school_arrival_violations=school_arrival_violations,
+            time_window_violations=time_window_violations,
+            time_window_lateness=time_window_lateness
         )
 
     def evaluate_solution(
@@ -184,7 +231,9 @@ class SolutionEvaluator:
         travel_time_matrix: List[List[float]],
         point_index_map: Dict[str, int],
         vehicle_capacities: List[int] = None,
-        departure_time_mins: float = 330.0
+        departure_time_mins: float = 330.0,
+        arrival_deadline_mins: float = None,
+        trip_type: str = "PICKUP"
     ) -> EvaluationResult:
         """
         Lượng giá toàn bộ giải pháp (tập hợp nhiều routes của các xe).
@@ -196,8 +245,13 @@ class SolutionEvaluator:
         tot_ttime = 0.0
         tot_early = 0.0
         tot_late = 0.0
+        tot_tw_lateness = 0.0
         tot_cap_viol = 0
         tot_ride_viol = 0
+        tot_duration_viol = 0
+        tot_school_arrival_viol = 0
+        tot_duration_excess = 0.0
+        tot_tw_violations = 0
 
         for r_idx, route_stops in enumerate(routes):
             cap = vehicle_capacities[r_idx] if vehicle_capacities and r_idx < len(vehicle_capacities) else config.VEHICLE_CAPACITY
@@ -208,7 +262,9 @@ class SolutionEvaluator:
                 travel_time_matrix=travel_time_matrix,
                 point_index_map=point_index_map,
                 vehicle_capacity=cap,
-                departure_time_mins=departure_time_mins
+                departure_time_mins=departure_time_mins,
+                arrival_deadline_mins=arrival_deadline_mins,
+                trip_type=trip_type
             )
             tot_dist += res.total_distance
             tot_ttime += res.total_travel_time
@@ -216,13 +272,24 @@ class SolutionEvaluator:
             tot_late += res.total_late_arrival
             tot_cap_viol += res.capacity_violations
             tot_ride_viol += res.ride_time_violations
+            tot_duration_viol += res.route_duration_violations
+            tot_school_arrival_viol += res.school_arrival_violations
+            tot_tw_violations += res.time_window_violations
+            if res.time_window_violations:
+                # Recover station-window lateness separately from class-arrival lateness.
+                # The evaluator's reported late penalty keeps its legacy soft-weight value.
+                tot_tw_lateness += res.time_window_lateness
+            tot_duration_excess += max(0.0, res.total_travel_time - self.max_route_driving_minutes)
 
         early_penalty = tot_early * self.early_weight
         late_penalty = tot_late * self.late_weight
+        hard_time_window_penalty = tot_tw_lateness * 10000.0 if trip_type == "PICKUP" else 0.0
         cap_penalty = tot_cap_viol * self.capacity_penalty_weight
         ride_penalty = tot_ride_viol * self.ride_time_penalty_weight
 
-        total_penalty = early_penalty + late_penalty + cap_penalty + ride_penalty
+        duration_penalty = tot_duration_excess * 10000.0
+        school_penalty = tot_school_arrival_viol * 10000.0
+        total_penalty = early_penalty + late_penalty + hard_time_window_penalty + cap_penalty + ride_penalty + duration_penalty + school_penalty
         objective_value = (tot_dist * self.distance_weight) + total_penalty
 
         return EvaluationResult(
@@ -237,5 +304,9 @@ class SolutionEvaluator:
             capacity_penalty=cap_penalty,
             ride_time_penalty=ride_penalty,
             total_penalty=total_penalty,
-            objective_value=objective_value
+            objective_value=objective_value,
+            route_duration_violations=tot_duration_viol,
+            school_arrival_violations=tot_school_arrival_viol,
+            time_window_violations=tot_tw_violations,
+            time_window_lateness=tot_tw_lateness
         )

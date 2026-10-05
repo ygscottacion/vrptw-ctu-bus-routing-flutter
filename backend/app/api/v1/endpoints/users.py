@@ -1,91 +1,83 @@
-from typing import Any, List
+from typing import Any
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.api import deps
-from app.crud import crud_user
-from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse, UserRoleUpdate
+from app.models.profile import Profile
+from app.schemas.profile import ProfileResponse, ProfileRoleUpdate
 
 router = APIRouter()
 
-@router.get("/", response_model=List[UserResponse])
+
+@router.get("/", response_model=list[ProfileResponse])
 def read_users(
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
-    current_admin: User = Depends(deps.get_current_admin)
+    current_admin: Profile = Depends(deps.get_current_admin),
 ) -> Any:
-    """
-    Retrieve all registered users (Students, Drivers, Admins).
-    Admin only.
-    """
-    users = crud_user.get_users(db, skip=skip, limit=limit)
-    return users
+    """List Supabase Auth accounts with their application profiles."""
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                auth_user.id,
+                COALESCE(profile.role::text, 'passenger') AS role,
+                COALESCE(profile.full_name, auth_user.raw_user_meta_data ->> 'full_name') AS full_name,
+                COALESCE(profile.phone, auth_user.raw_user_meta_data ->> 'phone') AS phone,
+                auth_user.email
+            FROM auth.users AS auth_user
+            LEFT JOIN public.profiles AS profile ON profile.id = auth_user.id
+            ORDER BY auth_user.created_at, auth_user.id
+            OFFSET :skip LIMIT :limit
+            """
+        ),
+        {"skip": max(skip, 0), "limit": min(max(limit, 1), 500)},
+    ).mappings()
+    return [dict(row) for row in rows]
 
-@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def create_user(
-    user_in: UserCreate,
-    db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
-) -> Any:
-    """
-    Create a new user account with specific role (Student, Driver, Admin).
-    Admin only.
-    """
-    user = crud_user.get_user_by_username(db, username=user_in.username)
-    if user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
-        )
-    return crud_user.create_user(db, user_in=user_in)
 
-@router.get("/{user_id}", response_model=UserResponse)
-def read_user_by_id(
-    user_id: int,
-    db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
-) -> Any:
-    """
-    Get user details by ID. Admin only.
-    """
-    user = crud_user.get_user_by_id(db, user_id=user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-@router.put("/{user_id}/role", response_model=UserResponse)
+@router.put("/{user_id}/role", response_model=ProfileResponse)
 def update_user_role(
-    user_id: int,
-    role_in: UserRoleUpdate,
+    user_id: UUID,
+    role_in: ProfileRoleUpdate,
     db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
+    current_admin: Profile = Depends(deps.get_current_admin),
 ) -> Any:
-    """
-    Update user role. Admin only.
-    """
-    user = crud_user.get_user_by_id(db, user_id=user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    user.role = role_in.role
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
+    """Update a Supabase account's application role in public.profiles."""
+    exists = db.execute(
+        text("SELECT 1 FROM auth.users WHERE id = :user_id"),
+        {"user_id": user_id},
+    ).first()
+    if not exists:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-@router.delete("/{user_id}", response_model=UserResponse)
-def delete_user(
-    user_id: int,
-    db: Session = Depends(deps.get_db),
-    current_admin: User = Depends(deps.get_current_admin)
-) -> Any:
-    """
-    Delete a user account by ID. Admin only.
-    """
-    user = crud_user.get_user_by_id(db, user_id=user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    db.delete(user)
+    profile = db.query(Profile).filter(Profile.id == user_id).one_or_none()
+    if profile is None:
+        profile = Profile(id=user_id, role=role_in.role)
+        db.add(profile)
+    else:
+        profile.role = role_in.role
+
     db.commit()
-    return user
+    db.refresh(profile)
+
+    if profile.role.value == "passenger":
+        from app.services.wallet_service import create_wallet_for_new_account
+
+        create_wallet_for_new_account(db, profile.id)
+
+    auth_row = db.execute(
+        text("SELECT email FROM auth.users WHERE id = :user_id"),
+        {"user_id": user_id},
+    ).mappings().one()
+    return {
+        "id": profile.id,
+        "role": profile.role,
+        "full_name": profile.full_name,
+        "phone": profile.phone,
+        "email": auth_row["email"],
+    }

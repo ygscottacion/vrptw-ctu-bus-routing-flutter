@@ -4,6 +4,7 @@ from app.services.student_routing.schemas import (
     SessionId, TripType, OptimizationResponse, RouteDataPayload,
     RouteSummary, Route, Stop, PartialResult, InfeasibleStation, Vehicle
 )
+from app.services.student_routing import config
 
 
 class ResponseFormatter:
@@ -51,6 +52,9 @@ class ResponseFormatter:
             curr_time = departure_mins
             prev_idx = point_index_map[depot["id"]]
             route_dist = 0.0
+            route_driving_time = 0.0
+            route_waiting_time = 0.0
+            route_service_time = 0.0
 
             for seq, stop_dict in enumerate(route_stops, start=1):
                 curr_idx = point_index_map[stop_dict["id"]]
@@ -59,6 +63,7 @@ class ResponseFormatter:
                 ttime = ttime_matrix[prev_idx][curr_idx]
 
                 route_dist += dist
+                route_driving_time += ttime
                 curr_time += ttime
                 arr_time_str = self._minutes_to_time_str(curr_time)
 
@@ -80,10 +85,14 @@ class ResponseFormatter:
                     t1 = h1 * 60 + m1
                     t2 = h2 * 60 + m2
                     if curr_time < t1:
+                        route_waiting_time += t1 - curr_time
                         curr_time = float(t1)
                     elif curr_time > t2:
                         within_tw = False
 
+                if trip_type == TripType.PICKUP:
+                    curr_time += config.PICKUP_SERVICE_MINUTES
+                    route_service_time += config.PICKUP_SERVICE_MINUTES
                 dep_time_str = self._minutes_to_time_str(curr_time)
 
                 stops_payload.append(Stop(
@@ -95,15 +104,21 @@ class ResponseFormatter:
                     students_picked=picked if trip_type == TripType.PICKUP else 0,
                     students_dropped=dropped if trip_type == TripType.DROPOFF else 0,
                     current_load=curr_load,
-                    within_time_window=within_tw
+                    within_time_window=within_tw,
+                    time_window_start=tw_start,
+                    time_window_end=tw_end,
+                    travel_time_from_previous_minutes=round(ttime, 2)
                 ))
 
                 prev_idx = curr_idx
 
             # Arrive at school / depot
             depot_idx = point_index_map[depot["id"]]
-            route_dist += dist_matrix[prev_idx][depot_idx]
-            curr_time += ttime_matrix[prev_idx][depot_idx]
+            return_distance = dist_matrix[prev_idx][depot_idx]
+            return_driving_time = ttime_matrix[prev_idx][depot_idx]
+            route_dist += return_distance
+            route_driving_time += return_driving_time
+            curr_time += return_driving_time
             school_arrival_str = self._minutes_to_time_str(curr_time)
 
             if curr_time > max_arrival_mins:
@@ -119,7 +134,8 @@ class ResponseFormatter:
                 students_picked=0,
                 students_dropped=0,
                 current_load=0,
-                within_time_window=True
+                within_time_window=True,
+                travel_time_from_previous_minutes=round(return_driving_time, 2)
             ))
 
             route_students = sum(s.students_picked if trip_type == TripType.PICKUP else s.students_dropped for s in stops_payload)
@@ -135,6 +151,9 @@ class ResponseFormatter:
                 arrival_at_school=school_arrival_str,
                 total_students=route_students,
                 total_distance_km=round(route_dist, 2),
+                driving_duration_minutes=round(route_driving_time, 2),
+                waiting_duration_minutes=round(route_waiting_time, 2),
+                service_duration_minutes=round(route_service_time, 2),
                 stops=stops_payload
             ))
 

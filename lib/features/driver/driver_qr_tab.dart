@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 
@@ -11,169 +14,118 @@ class DriverQrTab extends StatefulWidget {
   State<DriverQrTab> createState() => _DriverQrTabState();
 }
 
-class _DriverQrTabState extends State<DriverQrTab>
-    with SingleTickerProviderStateMixin {
+class _DriverQrTabState extends State<DriverQrTab> {
   final TextEditingController _codeController = TextEditingController();
-  late AnimationController _scannerAnimController;
-  late Animation<double> _scannerAnimation;
-  bool _isChecking = false;
+  final MobileScannerController _scannerController = MobileScannerController(
+    facing: CameraFacing.back,
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    formats: const [BarcodeFormat.qrCode],
+  );
 
-  // Lịch sử các vé đã soát trong phiên làm việc (Duplicate Scan Protection)
-  final Set<String> _scannedTickets = {};
+  bool _isChecking = false;
   Map<String, dynamic>? _lastVerificationResult;
 
   @override
-  void initState() {
-    super.initState();
-    _scannerAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-
-    _scannerAnimation = Tween<double>(begin: 0.1, end: 0.9).animate(
-      CurvedAnimation(
-        parent: _scannerAnimController,
-        curve: Curves.easeInOut,
-      ),
-    );
+  void dispose() {
+    _codeController.dispose();
+    unawaited(_scannerController.dispose());
+    super.dispose();
   }
 
-  @override
-  void dispose() {
-    _scannerAnimController.dispose();
-    _codeController.dispose();
-    super.dispose();
+  Future<void> _onDetect(BarcodeCapture capture) async {
+    if (_isChecking) return;
+    for (final barcode in capture.barcodes) {
+      final value = barcode.rawValue?.trim();
+      if (value != null && value.isNotEmpty) {
+        await _verifyQr(value);
+        return;
+      }
+    }
   }
 
   Future<void> _verifyQr(String code) async {
     final cleanCode = code.trim();
-    if (cleanCode.isEmpty) return;
-
-    // 1. Kiểm tra Quét trùng (Duplicate Scan Protection)
-    if (_scannedTickets.contains(cleanCode)) {
-      setState(() {
-        _lastVerificationResult = {
-          'status': 'duplicate',
-          'code': cleanCode,
-          'message': 'Mã vé này đã được tài xế soát thành công trước đó trong ca làm việc!',
-          'timestamp': DateTime.now().toString().substring(11, 16),
-        };
-      });
-      _showResultDialog('duplicate');
-      return;
-    }
+    if (cleanCode.isEmpty || _isChecking) return;
 
     setState(() => _isChecking = true);
     try {
-      final res = await widget.api.verifyTicket(cleanCode);
-      if (mounted) {
-        _scannedTickets.add(cleanCode); // Đánh dấu mã vé đã soát
-        setState(() {
-          _lastVerificationResult = {
-            'status': 'success',
-            'ticket_id': res['id'] ?? cleanCode,
-            'student_name': res['student_name'] ?? 'Lê Văn C (Sinh viên mẫu)',
-            'student_code': res['student_code'] ?? 'B2012345',
-            'route_name': res['route_name'] ?? 'Tuyến #1 - Khu II → Hòa An',
-            'timestamp': DateTime.now().toString().substring(11, 16),
-          };
-        });
-        _showResultDialog('success');
-      }
-    } catch (e) {
-      if (mounted) {
-        // Nếu là vé thử nghiệm mẫu và backend chưa bật hoặc lỗi mạng, fallback demo để tài xế kiểm tra UI
-        if (cleanCode == '550e8400-e29b-41d4-a716-446655440000' ||
-            cleanCode == '8d2f3a4b-9999-4321-8888-abcdef123456') {
-          final isFirst = cleanCode == '550e8400-e29b-41d4-a716-446655440000';
-          _scannedTickets.add(cleanCode);
-          setState(() {
-            _lastVerificationResult = {
-              'status': 'success',
-              'ticket_id': cleanCode,
-              'student_name': isFirst ? 'Lê Văn C (Mẫu thử nghiệm)' : 'Trần Thị Lan (Mẫu thử nghiệm)',
-              'student_code': isFirst ? 'B2012345' : 'B2019876',
-              'route_name': 'Tuyến #1 - Khu II → Hòa An',
-              'timestamp': DateTime.now().toString().substring(11, 16),
-            };
-          });
-          _showResultDialog('success');
-          return;
-        }
+      await _scannerController.stop();
+    } catch (_) {
+      // Continue verification if the scanner was already stopped by lifecycle.
+    }
 
-        final errorMsg = e.toString().replaceFirst('Exception: ', '');
-        setState(() {
-          _lastVerificationResult = {
-            'status': 'invalid',
-            'error': errorMsg,
-            'code': cleanCode,
-          };
-        });
-        _showResultDialog('invalid');
-      }
+    var resultStatus = 'invalid';
+    try {
+      final res = await widget.api.verifyTicket(cleanCode);
+      if (!mounted) return;
+      resultStatus = 'success';
+      setState(() {
+        _lastVerificationResult = {
+          'student_name': res['student_name']?.toString() ?? 'Không rõ sinh viên',
+          'student_code': res['student_code']?.toString() ?? '—',
+          'route_name': res['route_name']?.toString() ?? '—',
+          'timestamp': _currentTime(),
+        };
+      });
+    } catch (e) {
+      if (!mounted) return;
+      final errorMessage = e.toString().replaceFirst('Exception: ', '');
+      setState(() {
+        _lastVerificationResult = {
+          'code': cleanCode,
+          'error': errorMessage,
+          'timestamp': _currentTime(),
+        };
+      });
+    }
+
+    try {
+      if (mounted) await _showResultDialog(resultStatus);
     } finally {
-      if (mounted) setState(() => _isChecking = false);
+      if (mounted) {
+        setState(() => _isChecking = false);
+        try {
+          await _scannerController.start();
+        } catch (_) {
+          // The manual input remains available if camera access is unavailable.
+        }
+      }
     }
   }
 
-  void _showResultDialog(String status) {
+  String _currentTime() {
+    final now = DateTime.now();
+    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _showResultDialog(String status) async {
     final isSuccess = status == 'success';
-    final isDuplicate = status == 'duplicate';
+    final themeColor = isSuccess ? AppColors.teal : Colors.red;
 
-    Color themeColor;
-    IconData iconData;
-    String title;
-
-    if (isSuccess) {
-      themeColor = AppColors.teal;
-      iconData = Icons.check_circle_rounded;
-      title = 'XÁC NHẬN VÉ HỢP LỆ';
-    } else if (isDuplicate) {
-      themeColor = const Color(0xFFF59F00); // Orange warning
-      iconData = Icons.warning_amber_rounded;
-      title = 'CẢNH BÁO: VÉ ĐÃ SỬ DỤNG';
-    } else {
-      themeColor = Colors.red;
-      iconData = Icons.cancel_rounded;
-      title = 'VÉ KHÔNG HỢP LỆ';
-    }
-
-    showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (c) => Padding(
+      builder: (sheetContext) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: themeColor.withOpacity(0.15),
-              ),
-              child: Icon(
-                iconData,
-                color: themeColor,
-                size: 48,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: themeColor,
-              ),
+            Icon(
+              isSuccess ? Icons.check_circle_rounded : Icons.cancel_rounded,
+              color: themeColor,
+              size: 60,
             ),
             const SizedBox(height: 12),
-            if (isSuccess && _lastVerificationResult != null) ...[
+            Text(
+              isSuccess ? 'XÁC NHẬN VÉ HỢP LỆ' : 'KHÔNG THỂ XÁC NHẬN VÉ',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: themeColor),
+            ),
+            const SizedBox(height: 14),
+            if (isSuccess && _lastVerificationResult != null)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -182,45 +134,15 @@ class _DriverQrTabState extends State<DriverQrTab>
                 ),
                 child: Column(
                   children: [
-                    _infoRow('Sinh viên:',
-                        '${_lastVerificationResult!['student_name']} (${_lastVerificationResult!['student_code']})'),
-                    const SizedBox(height: 6),
-                    _infoRow('Tuyến xe:',
-                        _lastVerificationResult!['route_name'].toString()),
-                    const SizedBox(height: 6),
-                    _infoRow('Thời gian:',
-                        _lastVerificationResult!['timestamp'].toString()),
+                    _infoRow('Sinh viên:', '${_lastVerificationResult!['student_name']} (${_lastVerificationResult!['student_code']})'),
+                    const SizedBox(height: 7),
+                    _infoRow('Tuyến xe:', _lastVerificationResult!['route_name'].toString()),
+                    const SizedBox(height: 7),
+                    _infoRow('Thời gian:', _lastVerificationResult!['timestamp'].toString()),
                   ],
                 ),
-              ),
-            ] else if (isDuplicate) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF9DB),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFFEC99)),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      _lastVerificationResult?['message'] ?? '',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFFE67700),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _infoRow('Mã vé:', _lastVerificationResult?['code'] ?? ''),
-                    const SizedBox(height: 4),
-                    _infoRow('Thời gian quét lại:',
-                        _lastVerificationResult?['timestamp'] ?? ''),
-                  ],
-                ),
-              ),
-            ] else ...[
+              )
+            else if (_lastVerificationResult != null)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -231,36 +153,27 @@ class _DriverQrTabState extends State<DriverQrTab>
                 child: Column(
                   children: [
                     Text(
-                      _lastVerificationResult?['error']?.isNotEmpty == true
-                          ? _lastVerificationResult!['error']
-                          : 'Mã QR "${_lastVerificationResult?['code'] ?? ''}" không tồn tại hoặc không hợp lệ.',
+                      _lastVerificationResult!['error']?.toString() ?? 'Vé không hợp lệ.',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 8),
-                    _infoRow('Mã quét:', _lastVerificationResult?['code'] ?? ''),
+                    _infoRow('Mã QR:', _lastVerificationResult!['code']?.toString() ?? '—'),
                   ],
                 ),
               ),
-            ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
                 onPressed: () {
-                  Navigator.pop(c);
+                  Navigator.pop(sheetContext);
                   _codeController.clear();
                 },
                 style: FilledButton.styleFrom(
                   backgroundColor: themeColor,
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: const Text('Quét vé tiếp theo', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
@@ -271,19 +184,49 @@ class _DriverQrTabState extends State<DriverQrTab>
     );
   }
 
-  Widget _infoRow(String label, String val) {
+  Widget _infoRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+        const SizedBox(width: 12),
         Flexible(
-          child: Text(
-            val,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            textAlign: TextAlign.right,
-          ),
+          child: Text(value, textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         ),
       ],
+    );
+  }
+
+  Widget _cameraError(BuildContext context, MobileScannerException error) {
+    final permissionDenied = error.errorCode == MobileScannerErrorCode.permissionDenied;
+    final message = permissionDenied
+        ? 'Ứng dụng chưa được cấp quyền camera. Hãy cấp quyền trong Cài đặt để quét vé.'
+        : error.errorCode == MobileScannerErrorCode.unsupported
+            ? 'Thiết bị hoặc nền tảng này không hỗ trợ camera scanner.'
+            : 'Không mở được camera. Bạn có thể nhập mã vé bên dưới.';
+    return ColoredBox(
+      color: const Color(0xFF202526),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 40),
+              const SizedBox(height: 12),
+              Text(message, textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white70, fontSize: 13)),
+              const SizedBox(height: 10),
+              TextButton.icon(
+                onPressed: () => _scannerController.start(),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Thử mở camera lại'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -294,10 +237,7 @@ class _DriverQrTabState extends State<DriverQrTab>
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          'Quét mã QR vé Sinh viên (Scan)',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Quét mã QR vé Sinh viên', style: TextStyle(color: Colors.white)),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -306,106 +246,47 @@ class _DriverQrTabState extends State<DriverQrTab>
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Text(
-              'Hướng camera về phía mã QR trên ứng dụng Sinh viên',
+              'Hướng camera về phía mã QR trên vé sinh viên',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, fontSize: 14),
             ),
-            const SizedBox(height: 24),
-
-            // Camera Viewfinder Box Simulation
+            const SizedBox(height: 20),
             Center(
-              child: Container(
-                width: 260,
-                height: 260,
-                decoration: BoxDecoration(
-                  color: Colors.black45,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.teal, width: 2),
-                ),
-                child: Stack(
-                  children: [
-                    // Corner bracket accents
-                    Positioned(
-                      top: 16,
-                      left: 16,
-                      child: Container(width: 24, height: 4, color: AppColors.teal),
-                    ),
-                    Positioned(
-                      top: 16,
-                      left: 16,
-                      child: Container(width: 4, height: 24, color: AppColors.teal),
-                    ),
-                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Container(width: 24, height: 4, color: AppColors.teal),
-                    ),
-                    Positioned(
-                      top: 16,
-                      right: 16,
-                      child: Container(width: 4, height: 24, color: AppColors.teal),
-                    ),
-                    Positioned(
-                      bottom: 16,
-                      left: 16,
-                      child: Container(width: 24, height: 4, color: AppColors.teal),
-                    ),
-                    Positioned(
-                      bottom: 16,
-                      left: 16,
-                      child: Container(width: 4, height: 24, color: AppColors.teal),
-                    ),
-                    Positioned(
-                      bottom: 16,
-                      right: 16,
-                      child: Container(width: 24, height: 4, color: AppColors.teal),
-                    ),
-                    Positioned(
-                      bottom: 16,
-                      right: 16,
-                      child: Container(width: 4, height: 24, color: AppColors.teal),
-                    ),
-
-                    // Laser Scanning Line Animation
-                    AnimatedBuilder(
-                      animation: _scannerAnimation,
-                      builder: (context, child) {
-                        return Positioned(
-                          top: 260 * _scannerAnimation.value,
-                          left: 20,
-                          right: 20,
-                          child: Container(
-                            height: 3,
-                            decoration: BoxDecoration(
-                              color: AppColors.teal,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.teal.withOpacity(0.8),
-                                  blurRadius: 8,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const Center(
-                      child: Icon(
-                        Icons.qr_code_scanner_rounded,
-                        size: 90,
-                        color: Colors.white24,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: SizedBox(
+                  width: 300,
+                  height: 300,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      MobileScanner(
+                        controller: _scannerController,
+                        onDetect: _onDetect,
+                        errorBuilder: _cameraError,
                       ),
-                    ),
-                  ],
+                      IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(color: AppColors.teal, width: 3),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.qr_code_scanner_rounded, size: 68, color: Colors.white54),
+                          ),
+                        ),
+                      ),
+                      if (_isChecking)
+                        const ColoredBox(
+                          color: Color(0x88000000),
+                          child: Center(child: CircularProgressIndicator(color: AppColors.teal)),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-
-            const SizedBox(height: 28),
-
-            // Quick QR Simulator Input Box
+            const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -415,46 +296,24 @@ class _DriverQrTabState extends State<DriverQrTab>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Nhập / Giả lập mã QR vé:',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (_scannedTickets.isNotEmpty)
-                        TextButton(
-                          onPressed: () {
-                            setState(() => _scannedTickets.clear());
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Đã xóa lịch sử vé quét trùng.'),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                          },
-                          child: const Text('Xóa bộ nhớ quét', style: TextStyle(color: AppColors.teal, fontSize: 11)),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
+                  const Text('Nhập mã vé nếu không quét được camera:',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
                         child: TextField(
                           controller: _codeController,
+                          enabled: !_isChecking,
                           style: const TextStyle(color: Colors.white),
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: _isChecking ? null : _verifyQr,
                           decoration: InputDecoration(
-                            hintText: 'VD: 550e8400-e29b-41d4-a716-446655440000',
+                            hintText: 'Mã QR trên vé, ví dụ BUS-ABC123',
                             hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
                             filled: true,
                             fillColor: Colors.black26,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 10),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: BorderSide.none,
@@ -463,62 +322,15 @@ class _DriverQrTabState extends State<DriverQrTab>
                         ),
                       ),
                       const SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: _isChecking
-                            ? null
-                            : () => _verifyQr(_codeController.text),
-                        style: ElevatedButton.styleFrom(
+                      FilledButton(
+                        onPressed: _isChecking ? null : () => _verifyQr(_codeController.text),
+                        style: FilledButton.styleFrom(
                           backgroundColor: AppColors.teal,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         child: Text(_isChecking ? 'Đang kiểm...' : 'Xác nhận'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Mẫu vé Supabase UUID & Quét thử nghiệm:',
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      ActionChip(
-                        label: const Text('Vé UUID #1'),
-                        backgroundColor: Colors.white10,
-                        labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
-                        onPressed: () {
-                          const uuid = '550e8400-e29b-41d4-a716-446655440000';
-                          _codeController.text = uuid;
-                          _verifyQr(uuid);
-                        },
-                      ),
-                      ActionChip(
-                        label: const Text('Vé UUID #2'),
-                        backgroundColor: Colors.white10,
-                        labelStyle: const TextStyle(color: Colors.white, fontSize: 12),
-                        onPressed: () {
-                          const uuid = '8d2f3a4b-9999-4321-8888-abcdef123456';
-                          _codeController.text = uuid;
-                          _verifyQr(uuid);
-                        },
-                      ),
-                      ActionChip(
-                        label: const Text('Vé hỏng/Lỗi'),
-                        backgroundColor: Colors.red.withOpacity(0.2),
-                        labelStyle: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                        onPressed: () {
-                          const invalidCode = 'INVALID-EXPIRED-999';
-                          _codeController.text = invalidCode;
-                          _verifyQr(invalidCode);
-                        },
                       ),
                     ],
                   ),

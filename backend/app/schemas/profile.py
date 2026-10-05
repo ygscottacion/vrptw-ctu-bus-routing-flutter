@@ -20,6 +20,10 @@ class ProfileUpdate(ProfileBase):
     pass
 
 
+class ProfileRoleUpdate(BaseModel):
+    role: ProfileRole
+
+
 class ProfileResponse(ProfileBase):
     id: UUID
     role: ProfileRole

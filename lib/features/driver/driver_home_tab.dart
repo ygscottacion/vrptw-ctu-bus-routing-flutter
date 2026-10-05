@@ -79,10 +79,37 @@ class _DriverHomeTabState extends State<DriverHomeTab>
     }
   }
 
+  Map<String, dynamic>? _selectAssignedRoute() {
+    final routes = _assignedRoutes
+        .whereType<Map>()
+        .map((route) => Map<String, dynamic>.from(route))
+        .toList();
+    if (routes.isEmpty) return null;
+
+    for (final route in routes) {
+      if (route['status']?.toString().toLowerCase() == 'in_progress') {
+        return route;
+      }
+    }
+
+    final available = routes.where((route) {
+      final status = route['status']?.toString().toLowerCase();
+      return status != 'completed' && status != 'rejected';
+    }).toList();
+    if (available.isEmpty) return null;
+
+    available.sort((a, b) {
+      final aDate = DateTime.tryParse(a['service_date']?.toString() ?? '');
+      final bDate = DateTime.tryParse(b['service_date']?.toString() ?? '');
+      if (aDate == null) return bDate == null ? 0 : 1;
+      if (bDate == null) return -1;
+      return aDate.compareTo(bDate);
+    });
+    return available.first;
+  }
+
   Future<void> _toggleShift() async {
-    final nextRoute = _assignedRoutes.isNotEmpty
-        ? Map<String, dynamic>.from(_assignedRoutes.first as Map)
-        : null;
+    final nextRoute = _selectAssignedRoute();
     final routeId = nextRoute?['id']?.toString() ?? '';
 
     final willBeActive = !_isShiftActive;
@@ -145,9 +172,7 @@ class _DriverHomeTabState extends State<DriverHomeTab>
   Widget build(BuildContext context) {
     final driverName =
         widget.user['full_name']?.toString() ?? widget.user['username']?.toString() ?? 'Tài xế';
-    final nextRoute = _assignedRoutes.isNotEmpty
-        ? Map<String, dynamic>.from(_assignedRoutes.first as Map)
-        : null;
+    final nextRoute = _selectAssignedRoute();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6FAFA),

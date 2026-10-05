@@ -13,6 +13,10 @@ DROPOFF_SESSIONS = {
 VEHICLE_CAPACITY         = 45       # Default bus seats
 MAX_SERVICE_RADIUS_KM    = 10.0     # Maximum distance from CTU campus
 BUFFER_MINUTES           = 15       # Safety arrival buffer before school start
+CLASS_ARRIVAL_BUFFER_MINUTES = 10   # Students arrive before class starts
+STATION_TIME_WINDOW_MINUTES = 45   # Flexible pickup window per station
+PICKUP_SERVICE_MINUTES   = 3        # Boarding time at each pickup station
+MAX_ROUTE_DRIVING_MINUTES = 90      # Excludes waiting and station service time
 BOARDING_AT_SCHOOL_MIN   = 10       # Boarding time at CTU campus for dropoff
 MAX_RIDE_TIME_MINUTES    = 45       # Hard constraint: max time student stays on bus
 
@@ -39,7 +43,7 @@ TRAFFIC_CACHE_TTL        = 300      # 5 minutes
 # ── Objective Function Weights & Penalties ────────────────────────────
 DISTANCE_WEIGHT          = 1.0
 EARLY_PENALTY_WEIGHT     = 0.5
-LATE_PENALTY_WEIGHT      = 10.0     # Late penalty > Early penalty
+LATE_PENALTY_WEIGHT      = 10.0     # Legacy soft penalty for non-pickup routing
 CAPACITY_PENALTY_WEIGHT  = 1000.0   # Large penalty for capacity violation
 RIDE_TIME_PENALTY_WEIGHT = 10000.0  # Large penalty for ride time violation
 

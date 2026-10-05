@@ -41,6 +41,12 @@ class _TicketScreenState extends State<TicketScreen>
         routeId, () => widget.api.fetchRouteDetails(routeId));
   }
 
+  String _routeClock(dynamic value) {
+    final parsed = DateTime.tryParse(value?.toString() ?? '')?.toLocal();
+    if (parsed == null) return '—';
+    return '${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+  }
+
   // ─── Ngày chạy / Deadline 22:00 (Asia/Ho_Chi_Minh) ─────────
   // Ghi chú: Việt Nam không dùng giờ mùa hè (DST) nên lệch cố định UTC+7
   // là đủ chính xác cho MVP. Nếu sau này cần xử lý đa timezone thật sự,
@@ -380,6 +386,7 @@ class _TicketScreenState extends State<TicketScreen>
         final tripType = route['trip_type']?.toString() ?? '';
         final vehicleId = route['vehicle_id']?.toString();
         final totalDistance = (route['total_distance'] as num?)?.toDouble();
+        final drivingMinutes = (route['driving_duration_minutes'] as num?)?.toDouble();
         final stops = (route['stops'] as List<dynamic>? ?? []);
         // A stop can serve many passengers, so stop count is not passenger count.
         final incomplete = stops.length < 2;
@@ -420,6 +427,14 @@ class _TicketScreenState extends State<TicketScreen>
                         fontSize: 13, color: AppColors.textSecondary),
                   ),
                 ),
+              if (route['departure_time'] != null || route['estimated_school_arrival_time'] != null || drivingMinutes != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'Xuất phát ${_routeClock(route['departure_time'])} • Về trường ${_routeClock(route['estimated_school_arrival_time'])} • Xe chạy ${drivingMinutes?.toStringAsFixed(1) ?? '—'} phút',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ),
               const SizedBox(height: AppSpacing.sm),
               if (incomplete)
                 Container(
@@ -439,6 +454,8 @@ class _TicketScreenState extends State<TicketScreen>
                   final location = stop['location'] as Map<String, dynamic>?;
                   final name = location?['name']?.toString() ?? 'Điểm dừng';
                   final order = stop['stop_order']?.toString() ?? '';
+                  final windowStart = stop['time_window_start'];
+                  final windowEnd = stop['time_window_end'];
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 2),
                     child: Row(
@@ -457,10 +474,18 @@ class _TicketScreenState extends State<TicketScreen>
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
-                            child: Text(name,
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.textPrimary))),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                              Text(
+                                'Đến ${_routeClock(stop['arrival_time'])} • Đón ${_routeClock(stop['departure_time'])}'
+                                '${windowStart != null && windowEnd != null ? ' • Khung ${_routeClock(windowStart)}–${_routeClock(windowEnd)}' : ''}',
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -549,8 +574,11 @@ class _TicketScreenState extends State<TicketScreen>
             const Divider(height: 1, color: AppColors.border),
           ],
 
-          // QR - chi hien khi da assigned (co tuyen that).
-          if (t.status == 'assigned') ...[
+          // QR is issued at purchase; it becomes scannable after route assignment.
+          if ((t.status == 'reserved' ||
+                  t.status == 'paid_pending_route' ||
+                  t.status == 'assigned') &&
+              t.qrData.isNotEmpty) ...[
             const SizedBox(height: AppSpacing.xl),
             Container(
               padding: const EdgeInsets.all(AppSpacing.sm),
@@ -567,16 +595,22 @@ class _TicketScreenState extends State<TicketScreen>
                   backgroundColor: Colors.white),
             ),
             const SizedBox(height: AppSpacing.md),
-            const Text(
-              'Đưa mã này vào máy quét trên xe',
+            Text(
+              t.status == 'assigned'
+                  ? 'Đưa mã này vào máy quét trên xe'
+                  : 'Mã QR đã được cấp; chỉ quét được sau khi hệ thống phân tuyến.',
+              textAlign: TextAlign.center,
               style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.teal),
+                  color: t.status == 'assigned'
+                      ? AppColors.teal
+                      : AppColors.orange),
             ),
             const SizedBox(height: AppSpacing.lg),
             const Divider(height: 1, color: AppColors.border),
-            _buildRouteDetailsPanel(t.routeId!),
+            if (t.status == 'assigned' && t.routeId != null)
+              _buildRouteDetailsPanel(t.routeId!),
             const Divider(height: 1, color: AppColors.border),
           ],
 
@@ -1081,16 +1115,26 @@ class _TicketScreenState extends State<TicketScreen>
 
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: AppColors.white,
       shape: const RoundedRectangleBorder(
           borderRadius:
               BorderRadius.vertical(top: Radius.circular(AppRadius.full))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      builder: (ctx) {
+        final screenSize = MediaQuery.sizeOf(ctx);
+        final qrSize = (screenSize.height * 0.22)
+            .clamp(110.0, 160.0)
+            .toDouble();
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: screenSize.height * 0.9),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
             Container(
               width: 48,
               height: 5,
@@ -1126,11 +1170,34 @@ class _TicketScreenState extends State<TicketScreen>
                   borderRadius: BorderRadius.circular(AppRadius.md)),
               child: Column(
                 children: [
-                  Text('#${ticket['qr_code'] ?? 'BUS-${ticket['id'].toString().substring(0, 6).toUpperCase()}'}',
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary)),
+                  SelectableText(
+                    '#${ticket['qr_code'] ?? 'BUS-${ticket['id'].toString().substring(0, 6).toUpperCase()}'}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary),
+                  ),
+                  if (ticket['qr_code']?.toString().isNotEmpty == true) ...[
+                    const SizedBox(height: AppSpacing.md),
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      color: Colors.white,
+                      child: QrImageView(
+                        data: ticket['qr_code'].toString(),
+                        version: QrVersions.auto,
+                        size: qrSize,
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    const Text(
+                      'Mã QR đã được cấp. Có thể quét sau khi hệ thống phân tuyến.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Text(route.label,
                       style: const TextStyle(
@@ -1158,9 +1225,13 @@ class _TicketScreenState extends State<TicketScreen>
                         color: Colors.white)),
               ),
             ),
-          ],
-        ),
-      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -155,6 +155,9 @@ class _DriverMapTabState extends State<DriverMapTab>
       if (lat == null || lng == null) return null;
       final date = DateTime.tryParse(item['arrival_time']?.toString() ?? '')
           ?.toLocal();
+      final departure = DateTime.tryParse(item['departure_time']?.toString() ?? '')?.toLocal();
+      final windowStart = DateTime.tryParse(item['time_window_start']?.toString() ?? '')?.toLocal();
+      final windowEnd = DateTime.tryParse(item['time_window_end']?.toString() ?? '')?.toLocal();
       return _Stop(
         name,
         LatLng(lat, lng),
@@ -162,6 +165,8 @@ class _DriverMapTabState extends State<DriverMapTab>
             ? 'Đang cập nhật'
             : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
         (item['stop_order'] as num?)?.toInt() ?? 0,
+        departure == null ? null : '${departure.hour.toString().padLeft(2, '0')}:${departure.minute.toString().padLeft(2, '0')}',
+        windowStart == null || windowEnd == null ? null : '${windowStart.hour.toString().padLeft(2, '0')}:${windowStart.minute.toString().padLeft(2, '0')}–${windowEnd.hour.toString().padLeft(2, '0')}:${windowEnd.minute.toString().padLeft(2, '0')}',
       );
     }).whereType<_Stop>().toList()
       ..sort((a, b) => a.order.compareTo(b.order));
@@ -506,6 +511,8 @@ class _DriverMapTabState extends State<DriverMapTab>
                   Text(stop.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Text('Giờ đón dự kiến: ${stop.time}', style: const TextStyle(fontSize: 14, color: AppColors.teal)),
+                  if (stop.timeWindow != null) Text('Khung đón: ${stop.timeWindow}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  if (stop.departureTime != null) Text('Đón xong / rời trạm: ${stop.departureTime}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                   const SizedBox(height: 12),
                   const Text('Tọa độ:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                   Text('${stop.point.latitude.toStringAsFixed(5)}, ${stop.point.longitude.toStringAsFixed(5)}',
@@ -873,8 +880,13 @@ class _DriverMapTabState extends State<DriverMapTab>
                   child: Row(
                     children: [
                       Expanded(child: Text(stop.name)),
-                      Text(stop.time,
-                          style: const TextStyle(color: AppColors.teal)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(stop.time, style: const TextStyle(color: AppColors.teal)),
+                          if (stop.timeWindow != null) Text('TW ${stop.timeWindow}', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                        ],
+                      ),
                     ],
                   ),
                 )),
@@ -893,6 +905,7 @@ class _DriverMapTabState extends State<DriverMapTab>
   Widget _infoView() {
     final totalStops = _effectiveStops.length;
     final distanceKm = (_route?['total_distance'] as num?)?.toStringAsFixed(1) ?? '—';
+    final drivingMinutes = (_route?['driving_duration_minutes'] as num?)?.toStringAsFixed(1) ?? '—';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -902,6 +915,7 @@ class _DriverMapTabState extends State<DriverMapTab>
           _line('Depot', 'Đại Học Cần Thơ'),
           _line('Giá vé', '7000Đ'),
           _line('Quãng đường chạy toàn tuyến', '$distanceKm km'),
+          _line('Thời gian xe di chuyển (không gồm chờ)', '$drivingMinutes phút'),
           _line('Tổng số trạm của tuyến đang chạy', '$totalStops trạm'),
           _line('Hotlines', '0919 243 170'),
           const SizedBox(height: 16),
@@ -973,8 +987,9 @@ class _DriverMapTabState extends State<DriverMapTab>
 }
 
 class _Stop {
-  const _Stop(this.name, this.point, this.time, this.order);
+  const _Stop(this.name, this.point, this.time, this.order, this.departureTime, this.timeWindow);
   final String name, time;
+  final String? departureTime, timeWindow;
   final LatLng point;
   final int order;
 }
