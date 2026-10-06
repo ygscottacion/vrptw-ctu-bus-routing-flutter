@@ -3,7 +3,7 @@ import uuid
 import datetime
 import time
 from typing import Any, List, Optional, Tuple
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func
 
@@ -18,6 +18,8 @@ from app.models.route_job import RouteJob, RouteJobStatus
 from app.schemas.route import (
     PolylineResponse,
     RouteGenerateRequest,
+    RouteApproveRequest,
+    RouteDriverOption,
     RouteJobResponse,
     RouteRejectRequest,
     RouteResponse,
@@ -210,7 +212,7 @@ def read_routes(
         db.query(Route)
         .options(
             selectinload(Route.stops).selectinload(RouteStop.location),
-            joinedload(Route.vehicle),
+            joinedload(Route.vehicle).joinedload(Vehicle.driver),
         )
     )
 
@@ -507,9 +509,61 @@ def end_route(
     )
 
 
+@router.get("/{route_id}/drivers", response_model=List[RouteDriverOption])
+def list_route_driver_options(
+    route_id: uuid.UUID,
+    db: Session = Depends(deps.get_db),
+    current_admin: Profile = Depends(deps.get_current_admin),
+) -> Any:
+    """List drivers with a suitable vehicle and indicate same-shift assignments."""
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if not route:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tuyến xe.")
+
+    assigned_driver_ids = {
+        driver_id
+        for (driver_id,) in (
+            db.query(Vehicle.driver_id)
+            .join(Route, Route.vehicle_id == Vehicle.id)
+            .filter(
+                Route.service_date == route.service_date,
+                Route.session_id == route.session_id,
+                Route.id != route.id,
+                Route.status.in_([RouteStatus.APPROVED, RouteStatus.IN_PROGRESS, RouteStatus.COMPLETED]),
+                Vehicle.driver_id.isnot(None),
+            )
+            .all()
+        )
+    }
+    options = (
+        db.query(Profile, Vehicle)
+        .join(Vehicle, Vehicle.driver_id == Profile.id)
+        .filter(Profile.role == ProfileRole.DRIVER, Vehicle.capacity >= (route.passenger_count or 0))
+        .order_by(Profile.full_name.asc(), Vehicle.capacity.asc())
+        .all()
+    )
+    # A driver can have more than one vehicle record; present the smallest suitable bus.
+    unique_options: dict[uuid.UUID, tuple[Profile, Vehicle]] = {}
+    for driver, vehicle in options:
+        unique_options.setdefault(driver.id, (driver, vehicle))
+    return [
+        {
+            "id": driver.id,
+            "full_name": driver.full_name,
+            "phone": driver.phone,
+            "vehicle_id": vehicle.id,
+            "license_plate": vehicle.license_plate,
+            "capacity": vehicle.capacity,
+            "busy": driver.id in assigned_driver_ids,
+        }
+        for driver, vehicle in unique_options.values()
+    ]
+
+
 @router.post("/{route_id}/approve", response_model=RouteResponse)
 def approve_route(
     route_id: uuid.UUID,
+    approve_in: Optional[RouteApproveRequest] = Body(None),
     db: Session = Depends(deps.get_db),
     current_admin: Profile = Depends(deps.get_current_admin),
 ) -> Any:
@@ -526,7 +580,7 @@ def approve_route(
     if route.status == RouteStatus.APPROVED:
         return (
             db.query(Route)
-            .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+            .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle).joinedload(Vehicle.driver))
             .filter(Route.id == route_id)
             .first()
         )
@@ -537,6 +591,45 @@ def approve_route(
             detail=f"Không thể duyệt tuyến đang ở trạng thái '{route.status.value}'.",
         )
 
+    if approve_in is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Vui lòng chọn tài xế trước khi duyệt tuyến.")
+
+    # Lock the profile row so concurrent approvals for different routes serialize
+    # while checking the driver's same-day, same-session availability.
+    driver = (
+        db.query(Profile)
+        .filter(Profile.id == approve_in.driver_id, Profile.role == ProfileRole.DRIVER)
+        .with_for_update()
+        .first()
+    )
+    if not driver:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy tài xế.")
+
+    vehicle = (
+        db.query(Vehicle)
+        .filter(Vehicle.driver_id == driver.id, Vehicle.capacity >= (route.passenger_count or 0))
+        .order_by(Vehicle.capacity.asc())
+        .first()
+    )
+    if not vehicle:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tài xế chưa được gán xe đủ chỗ cho tuyến này.")
+
+    driver_busy = (
+        db.query(Route.id)
+        .join(Vehicle, Route.vehicle_id == Vehicle.id)
+        .filter(
+            Vehicle.driver_id == driver.id,
+            Route.service_date == route.service_date,
+            Route.session_id == route.session_id,
+            Route.id != route.id,
+            Route.status.in_([RouteStatus.APPROVED, RouteStatus.IN_PROGRESS, RouteStatus.COMPLETED]),
+        )
+        .first()
+    )
+    if driver_busy:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tài xế đang bận trong ca này.")
+
+    route.vehicle_id = vehicle.id
     route.status = RouteStatus.APPROVED
     route.approved_by = current_admin.id
     route.approved_at = datetime.datetime.now(VN_TZ)
@@ -545,7 +638,7 @@ def approve_route(
 
     return (
         db.query(Route)
-        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle))
+        .options(selectinload(Route.stops).selectinload(RouteStop.location), joinedload(Route.vehicle).joinedload(Vehicle.driver))
         .filter(Route.id == route_id)
         .first()
     )

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' show Point;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:maplibre_gl/maplibre_gl.dart' as ml;
@@ -29,9 +28,16 @@ class DriverMapTab extends StatefulWidget {
 
 class _DriverMapTabState extends State<DriverMapTab>
     with SingleTickerProviderStateMixin {
-  final _map = MapController();
   ml.MapLibreMapController? _goongMapController;
-  bool _overlayMapReady = false;
+  final DraggableScrollableController _panelController =
+      DraggableScrollableController();
+  ml.Circle? _gpsCircle;
+  StreamSubscription<Position>? _gpsSubscription;
+  Position? _currentPosition;
+  bool _mapStyleLoaded = false;
+  bool _renderingMapAnnotations = false;
+  bool _rerenderMapAnnotationsRequested = false;
+  bool _panelCollapsed = false;
   late TabController _tabs;
   Map<String, dynamic>? _route;
   List<_Stop> _stops = [];
@@ -59,19 +65,9 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   List<_Stop> get _effectiveStops => _stops;
 
-  void _syncOverlayCamera([ml.CameraPosition? cameraPosition]) {
-    if (!_overlayMapReady) return;
-    final camera = cameraPosition ?? _goongMapController?.cameraPosition;
-    if (camera == null) return;
-    _map.move(
-      LatLng(camera.target.latitude, camera.target.longitude),
-      camera.zoom,
-    );
-    _map.rotate(camera.bearing);
-  }
+  ml.LatLng _mapPoint(LatLng point) => ml.LatLng(point.latitude, point.longitude);
 
   void _moveMapTo(LatLng center, double zoom) {
-    if (_overlayMapReady) _map.move(center, zoom);
     _goongMapController?.animateCamera(
       ml.CameraUpdate.newLatLngZoom(
         ml.LatLng(center.latitude, center.longitude),
@@ -85,6 +81,135 @@ class _DriverMapTabState extends State<DriverMapTab>
       return _effectiveStops.map((s) => s.point).toList();
     }
     return _roadPolylinePoints;
+  }
+
+  void _onPanelExtentChanged() {
+    if (!_panelController.isAttached) return;
+    final collapsed = _panelController.size <= 0.09;
+    if (collapsed != _panelCollapsed && mounted) {
+      setState(() => _panelCollapsed = collapsed);
+    }
+  }
+
+  Future<void> _togglePanel() async {
+    if (!_panelController.isAttached) return;
+    await _panelController.animateTo(
+      _panelCollapsed ? .45 : .06,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _onMapCircleTapped(ml.Circle circle) {
+    final index = circle.data?['stopIndex'];
+    if (index is! int || index < 0 || index >= _effectiveStops.length) return;
+    setState(() => _selectedStopForTooltip = _effectiveStops[index]);
+    _renderMapAnnotations();
+  }
+
+  Future<void> _updateGpsAnnotation(Position position) async {
+    final controller = _goongMapController;
+    if (!_mapStyleLoaded || controller == null) return;
+    if (_renderingMapAnnotations) {
+      _rerenderMapAnnotationsRequested = true;
+      return;
+    }
+    final point = LatLng(position.latitude, position.longitude);
+    try {
+      final current = _gpsCircle;
+      if (current == null) {
+        _gpsCircle = await controller.addCircle(
+          ml.CircleOptions(
+            geometry: _mapPoint(point),
+            circleRadius: 9,
+            circleColor: '#087BCE',
+            circleStrokeColor: '#FFFFFF',
+            circleStrokeWidth: 3,
+          ),
+          const {'kind': 'gps'},
+        );
+      } else {
+        await controller.updateCircle(
+          current,
+          ml.CircleOptions(geometry: _mapPoint(point)),
+        );
+      }
+    } catch (_) {
+      // A route refresh or style reload can replace annotations concurrently.
+    }
+  }
+
+  Future<void> _renderMapAnnotations() async {
+    final controller = _goongMapController;
+    if (!_mapStyleLoaded || controller == null) return;
+    if (_renderingMapAnnotations) {
+      _rerenderMapAnnotationsRequested = true;
+      return;
+    }
+    _renderingMapAnnotations = true;
+    try {
+      await controller.clearLines();
+      await controller.clearCircles();
+      _gpsCircle = null;
+
+      final points = _effectivePolylinePoints;
+      if (points.length > 1) {
+        await controller.addLine(
+          ml.LineOptions(
+            geometry: points.map(_mapPoint).toList(),
+            lineColor: '#FFFFFF',
+            lineWidth: 7,
+            lineJoin: 'round',
+          ),
+        );
+        await controller.addLine(
+          ml.LineOptions(
+            geometry: points.map(_mapPoint).toList(),
+            lineColor: '#EA4335',
+            lineWidth: 4.5,
+            lineJoin: 'round',
+          ),
+        );
+      }
+
+      for (var i = 0; i < _effectiveStops.length; i++) {
+        final stop = _effectiveStops[i];
+        final isSelected = _selectedStopForTooltip?.name == stop.name;
+        final isActiveDepot = _status == 'in_progress' && i == 0;
+        await controller.addCircle(
+          ml.CircleOptions(
+            geometry: _mapPoint(stop.point),
+            circleRadius: 12,
+            circleColor: isSelected || isActiveDepot ? '#FFA23B' : '#FF6B4A',
+            circleStrokeColor: '#FFFFFF',
+            circleStrokeWidth: 2,
+          ),
+          {'stopIndex': i},
+        );
+      }
+
+      final position = _currentPosition;
+      if (position != null) {
+        _gpsCircle = await controller.addCircle(
+          ml.CircleOptions(
+            geometry: ml.LatLng(position.latitude, position.longitude),
+            circleRadius: 9,
+            circleColor: '#087BCE',
+            circleStrokeColor: '#FFFFFF',
+            circleStrokeWidth: 3,
+          ),
+          const {'kind': 'gps'},
+        );
+      }
+    } catch (error) {
+      debugPrint('Unable to render route annotations: $error');
+    } finally {
+      _renderingMapAnnotations = false;
+      if (_rerenderMapAnnotationsRequested && mounted) {
+        _rerenderMapAnnotationsRequested = false;
+        _renderMapAnnotations();
+      }
+    }
   }
 
   String get _displayTitle {
@@ -107,6 +232,12 @@ class _DriverMapTabState extends State<DriverMapTab>
     _tabs = TabController(length: 3, vsync: this);
     _tabs.addListener(() {
       if (mounted) setState(() {});
+    });
+    _panelController.addListener(_onPanelExtentChanged);
+    _currentPosition = GpsService().lastPosition;
+    _gpsSubscription = GpsService().positionStream.listen((position) {
+      _currentPosition = position;
+      _updateGpsAnnotation(position);
     });
     _route = widget.initialRoute;
     _load();
@@ -131,8 +262,11 @@ class _DriverMapTabState extends State<DriverMapTab>
   @override
   void dispose() {
     _pendingRouteTimer?.cancel();
+    _gpsSubscription?.cancel();
+    _panelController.removeListener(_onPanelExtentChanged);
+    _goongMapController?.onCircleTapped.remove(_onMapCircleTapped);
     _tabs.dispose();
-    _map.dispose();
+    _panelController.dispose();
     super.dispose();
   }
 
@@ -182,6 +316,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         setState(() {
           _roadPolylinePoints = roadPoints;
         });
+        _renderMapAnnotations();
       }
     } catch (_) {}
   }
@@ -198,6 +333,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         });
         _moveMapTo(_center, 13.5);
         _fetchRoadPolyline(initialStops);
+        _renderMapAnnotations();
       }
     }
 
@@ -217,6 +353,7 @@ class _DriverMapTabState extends State<DriverMapTab>
             });
             _moveMapTo(_center, 13.5);
             _fetchRoadPolyline(stops);
+            _renderMapAnnotations();
           }
         }
       } catch (_) {}
@@ -245,6 +382,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         if (_stops.isNotEmpty) {
           _moveMapTo(_center, 13.5);
           _fetchRoadPolyline(_stops);
+          _renderMapAnnotations();
         }
       }
     } catch (e) {
@@ -323,6 +461,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         setState(() {
           _route = updatedRoute;
         });
+        _renderMapAnnotations();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -369,7 +508,7 @@ class _DriverMapTabState extends State<DriverMapTab>
                 )
               : Stack(
                   children: [
-                    // Goong vector style rendered by MapLibre, with Flutter overlays above it.
+                    // Basemap and route annotations share the MapLibre camera.
                     ml.MapLibreMap(
                       styleString: ApiConfig.goongMapStyleUrl,
                       initialCameraPosition: ml.CameraPosition(
@@ -378,91 +517,14 @@ class _DriverMapTabState extends State<DriverMapTab>
                       ),
                       attributionButtonPosition: ml.AttributionButtonPosition.topLeft,
                       attributionButtonMargins: const Point(8, 58),
-                      trackCameraPosition: true,
-                      onMapCreated: (controller) => _goongMapController = controller,
-                      onCameraMove: (camera) => _syncOverlayCamera(camera),
-                      onCameraIdle: _syncOverlayCamera,
-                    ),
-                    IgnorePointer(
-                      child: FlutterMap(
-                        mapController: _map,
-                        options: MapOptions(
-                          initialCenter: _center,
-                          initialZoom: 13.5,
-                          backgroundColor: Colors.transparent,
-                          onMapReady: () {
-                            _overlayMapReady = true;
-                            _syncOverlayCamera();
-                          },
-                          interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-                        ),
-                        children: [
-                        if (_effectiveStops.length > 1)
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _effectivePolylinePoints,
-                                color: Colors.white,
-                                strokeWidth: 7,
-                              ),
-                              Polyline(
-                                points: _effectivePolylinePoints,
-                                color: const Color(0xFFEA4335), // Signature Red matching student UI
-                                strokeWidth: 4.5,
-                              ),
-                            ],
-                          ),
-                        StreamBuilder<Position>(
-                          stream: GpsService().positionStream,
-                          initialData: GpsService().lastPosition,
-                          builder: (context, snapshot) {
-                            final markers = <Marker>[
-                              for (var i = 0; i < _effectiveStops.length; i++)
-                                Marker(
-                                  point: _effectiveStops[i].point,
-                                  width: 38,
-                                  height: 38,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _selectedStopForTooltip = _effectiveStops[i];
-                                      });
-                                      _moveMapTo(_effectiveStops[i].point, 15.5);
-                                    },
-                                    child: _Pin(active: _status == 'in_progress' && i == 0),
-                                  ),
-                                ),
-                            ];
-
-                            if (snapshot.hasData && snapshot.data != null) {
-                              final pos = snapshot.data!;
-                              markers.add(
-                                Marker(
-                                  point: LatLng(pos.latitude, pos.longitude),
-                                  width: 46,
-                                  height: 46,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: AppColors.teal,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white, width: 3),
-                                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8)],
-                                    ),
-                                    child: const Icon(
-                                      Icons.directions_bus_rounded,
-                                      color: Colors.white,
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-
-                            return MarkerLayer(markers: markers);
-                          },
-                        ),
-                        ],
-                      ),
+                      onMapCreated: (controller) {
+                        _goongMapController = controller;
+                        controller.onCircleTapped.add(_onMapCircleTapped);
+                      },
+                      onStyleLoadedCallback: () {
+                        _mapStyleLoaded = true;
+                        _renderMapAnnotations();
+                      },
                     ),
 
                     // Layer 2: Floating Controls
@@ -568,28 +630,78 @@ class _DriverMapTabState extends State<DriverMapTab>
       );
 
   Widget _panel() => DraggableScrollableSheet(
+        controller: _panelController,
         initialChildSize: .45,
-        minChildSize: .22,
+        minChildSize: .06,
         maxChildSize: .88,
+        snap: true,
+        snapSizes: const [.45],
+        shouldCloseOnMinExtent: false,
         builder: (_, scroll) => Container(
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
             boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 12)],
           ),
-          child: ListView(
-            controller: scroll,
-            padding: const EdgeInsets.only(bottom: 24),
-            children: [
+          child: _panelCollapsed
+              ? ListView(
+                  controller: scroll,
+                  padding: const EdgeInsets.only(bottom: 4),
+                  children: [
+                    Center(
+                      child: InkWell(
+                        onTap: _togglePanel,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                height: 4,
+                                width: 36,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFD4C9),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(
+                                'Route $_routeCode',
+                                style: const TextStyle(
+                                  color: Color(0xFF07835A),
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              const Icon(Icons.keyboard_arrow_up_rounded, size: 20),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView(
+                  controller: scroll,
+                  padding: const EdgeInsets.only(bottom: 24),
+                  children: [
               // Drag Handle
               Center(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 10, bottom: 10),
-                  height: 4,
-                  width: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFD4C9),
-                    borderRadius: BorderRadius.circular(3),
+                child: InkWell(
+                  onTap: _togglePanel,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Container(
+                      height: 4,
+                      width: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFD4C9),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -680,8 +792,8 @@ class _DriverMapTabState extends State<DriverMapTab>
               if (_tabs.index == 0) _stopsView(),
               if (_tabs.index == 1) _hoursView(),
               if (_tabs.index == 2) _infoView(),
-            ],
-          ),
+                  ],
+                ),
         ),
       );
 
@@ -758,6 +870,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         setState(() {
           _selectedStopForTooltip = s;
         });
+        _renderMapAnnotations();
         _moveMapTo(s.point, 15.5);
       },
       child: Row(
@@ -992,23 +1105,4 @@ class _Stop {
   final String? departureTime, timeWindow;
   final LatLng point;
   final int order;
-}
-
-class _Pin extends StatelessWidget {
-  const _Pin({required this.active});
-  final bool active;
-  @override
-  Widget build(BuildContext context) => Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: active ? const Color(0xFFFFA23B) : const Color(0xFFFF6B4A),
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
-        ),
-        child: const Icon(
-          Icons.directions_bus_rounded,
-          size: 20,
-          color: Colors.white,
-        ),
-      );
 }

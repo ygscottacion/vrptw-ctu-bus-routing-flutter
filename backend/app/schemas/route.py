@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.route import RouteStatus
 from app.models.route_job import RouteJobStatus
 from app.schemas.location import LocationResponse
+from app.schemas.vehicle import VehicleResponse
 
 
 class RouteStopResponse(BaseModel):
@@ -28,6 +29,7 @@ class RouteResponse(BaseModel):
     session_id: str
     trip_type: str
     vehicle_id: Optional[UUID] = None
+    vehicle: Optional[VehicleResponse] = None
     status: RouteStatus
     total_distance: float
     driving_duration_minutes: Optional[float] = None
@@ -46,6 +48,20 @@ class RouteResponse(BaseModel):
 
 class RouteRejectRequest(BaseModel):
     reason: str = Field(..., min_length=3, max_length=255, description="Lý do từ chối tuyến")
+
+
+class RouteApproveRequest(BaseModel):
+    driver_id: UUID
+
+
+class RouteDriverOption(BaseModel):
+    id: UUID
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    vehicle_id: UUID
+    license_plate: str
+    capacity: int
+    busy: bool
 
 
 

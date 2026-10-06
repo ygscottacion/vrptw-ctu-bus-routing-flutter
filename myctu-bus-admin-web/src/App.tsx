@@ -5,6 +5,7 @@ import { supabase } from './services/supabase';
 
 type User = { id: string; role: string; email?: string | null; full_name?: string | null; phone?: string | null; username?: string };
 type Vehicle = { id: string; license_plate: string; capacity: number; driver?: User; driver_id?: string };
+type RouteDriverOption = { id: string; full_name?: string | null; phone?: string | null; vehicle_id: string; license_plate: string; capacity: number; busy: boolean };
 type Incident = { id: string; title: string; description?: string; status: string; reported_at: string; driver?: User };
 type BusLocation = { vehicle_id: string; license_plate?: string; latitude: number; longitude: number; speed?: number; status?: string };
 type LocationItem = { id: string; code?: string; name: string; latitude: number; longitude: number };
@@ -683,6 +684,9 @@ function RouteGenerator() {
   const [jobStatus, setJobStatus] = useState<{ id: string; status: string; message?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [selectedRouteForStops, setSelectedRouteForStops] = useState<RouteItem | null>(null);
+  const [driverOptions, setDriverOptions] = useState<Record<string, RouteDriverOption[]>>({});
+  const [selectedDrivers, setSelectedDrivers] = useState<Record<string, string>>({});
+  const [loadingDrivers, setLoadingDrivers] = useState<string | null>(null);
 
   const loadLocations = async () => {
     try {
@@ -747,12 +751,32 @@ function RouteGenerator() {
     }
   };
 
-  const approveRoute = async (routeId: string) => {
+  const loadDriverOptions = async (routeId: string) => {
+    setLoadingDrivers(routeId);
     try {
-      await api.post(`/routes/${routeId}/approve`);
-      void loadRoutes();
+      const options = await api.get<RouteDriverOption[]>(`/routes/${routeId}/drivers`);
+      setDriverOptions((current) => ({ ...current, [routeId]: options }));
+      setSelectedDrivers((current) => ({ ...current, [routeId]: current[routeId] || '' }));
     } catch (e) {
       alert((e as Error).message);
+    } finally {
+      setLoadingDrivers(null);
+    }
+  };
+
+  const approveRoute = async (routeId: string) => {
+    const driverId = selectedDrivers[routeId];
+    if (!driverId) {
+      alert('Chọn một tài xế đang rảnh trước khi duyệt tuyến.');
+      return;
+    }
+    try {
+      await api.post(`/routes/${routeId}/approve`, { driver_id: driverId });
+      void loadRoutes();
+      setDriverOptions((current) => { const next = { ...current }; delete next[routeId]; return next; });
+    } catch (e) {
+      alert((e as Error).message);
+      void loadDriverOptions(routeId);
     }
   };
 
@@ -838,7 +862,7 @@ function RouteGenerator() {
       <section className="panel" style={{ marginTop: 20 }}>
         <h2>Danh sách Tuyến buýt & Luồng Duyệt lộ trình ({routes.length})</h2>
         <Table
-          heads={['Mã / ID Tuyến', 'Ngày chạy', 'Ca / Chiều', 'Xe gán', 'Số SV đón', 'Quãng đường', 'Thời gian chạy', 'Trạng thái', 'Thao tác duyệt / Manifest']}
+          heads={['Mã / ID Tuyến', 'Ngày chạy', 'Ca / Chiều', 'Tài xế', 'Số SV đón', 'Quãng đường', 'Thời gian chạy', 'Trạng thái', 'Thao tác duyệt / Manifest']}
           rows={routes.map((r) => (
             <tr key={r.id}>
               <td>
@@ -848,7 +872,35 @@ function RouteGenerator() {
               <td>
                 {r.session_id} • {r.trip_type === 'pickup' ? 'Đón' : 'Trả'}
               </td>
-              <td>{r.vehicle?.license_plate || (r.vehicle_id ? `Xe #${r.vehicle_id.slice(0, 8)}` : 'Chưa gán xe')}</td>
+              <td>
+                {r.status === 'pending'
+                  ? 'Chưa chọn'
+                  : r.vehicle?.driver?.full_name || r.vehicle?.driver?.phone || 'Chưa có tài xế'}
+                {r.status !== 'pending' && r.vehicle?.driver && <small style={{ display: 'block', color: '#667085' }}>{r.vehicle.license_plate}</small>}
+                {r.status === 'pending' && (
+                  <div style={{ marginTop: 6 }}>
+                    {!driverOptions[r.id] ? (
+                      <button type="button" style={{ fontSize: 12, padding: '4px 8px' }} disabled={loadingDrivers === r.id} onClick={() => void loadDriverOptions(r.id)}>
+                        {loadingDrivers === r.id ? 'Đang tải…' : 'Chọn tài xế'}
+                      </button>
+                    ) : (
+                      <select
+                        aria-label={`Chọn tài xế cho tuyến ${r.id.slice(0, 8)}`}
+                        value={selectedDrivers[r.id] || ''}
+                        onChange={(event) => setSelectedDrivers((current) => ({ ...current, [r.id]: event.target.value }))}
+                        style={{ maxWidth: 190, fontSize: 12 }}
+                      >
+                        <option value="">-- Chọn tài xế --</option>
+                        {driverOptions[r.id].map((driver) => (
+                          <option key={driver.id} value={driver.id} disabled={driver.busy}>
+                            {driver.full_name || driver.phone || driver.id.slice(0, 8)} · {driver.license_plate}{driver.busy ? ' · Tài xế đang bận' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
+              </td>
               <td>{r.passenger_count ?? 0} sinh viên</td>
               <td>{r.total_distance?.toFixed(1) ?? '0.0'} km</td>
               <td>{r.driving_duration_minutes != null ? `${r.driving_duration_minutes.toFixed(1)} phút` : '—'}</td>
@@ -871,7 +923,7 @@ function RouteGenerator() {
                 </button>
                 {r.status === 'pending' && (
                   <>
-                    <button style={{ fontSize: 12, padding: '4px 8px', background: '#087b7c' }} onClick={() => approveRoute(r.id)}>
+                    <button style={{ fontSize: 12, padding: '4px 8px', background: '#087b7c' }} disabled={!selectedDrivers[r.id]} onClick={() => approveRoute(r.id)}>
                       ✓ Duyệt
                     </button>
                     <button className="danger-button" style={{ fontSize: 12, padding: '4px 8px' }} onClick={() => rejectRoute(r.id)}>
