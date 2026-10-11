@@ -25,8 +25,9 @@ class _HomeScreenState extends State<HomeScreen>
   late AnimationController _co2Controller;
   late Animation<double> _co2Animation;
 
-  // CTUPay wallet (test/demo state only — replace with real backend later)
-  double _balance = 500000;
+  int? _balance;
+  bool _walletLoading = true;
+  String? _walletError;
 
   // Tiny overlap of the wallet card into the bottom of the hero image.
   // Uses Transform.translate (not Positioned overflow) so the card's
@@ -45,6 +46,7 @@ class _HomeScreenState extends State<HomeScreen>
       CurvedAnimation(parent: _co2Controller, curve: Curves.easeOut),
     );
     _co2Controller.forward();
+    _loadWalletBalance();
 
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) {
@@ -56,6 +58,33 @@ class _HomeScreenState extends State<HomeScreen>
         );
       }
     });
+  }
+
+  Future<void> _loadWalletBalance() async {
+    final api = widget.api;
+    if (api == null) {
+      if (!mounted) return;
+      setState(() {
+        _walletLoading = false;
+        _walletError = 'Không thể tải số dư ví';
+      });
+      return;
+    }
+    try {
+      final balance = await api.fetchWalletBalance();
+      if (!mounted) return;
+      setState(() {
+        _balance = balance;
+        _walletError = null;
+        _walletLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _walletError = error.toString().replaceFirst('Exception: ', '');
+        _walletLoading = false;
+      });
+    }
   }
 
   @override
@@ -226,13 +255,32 @@ class _HomeScreenState extends State<HomeScreen>
                       fontSize: 11,
                       fontWeight: FontWeight.w500),
                 ),
-                Text(
-                  '${_formatCurrency(_balance)} ₫',
-                  style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700),
-                ),
+                if (_walletLoading)
+                  const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (_walletError != null)
+                  GestureDetector(
+                    onTap: _loadWalletBalance,
+                    child: Text(
+                      'Không tải được • Thử lại',
+                      style: TextStyle(
+                        color: AppColors.teal,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                else
+                  Text(
+                    '${_formatCurrency(_balance)} ₫',
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700),
+                  ),
               ],
             ),
           ),
@@ -319,7 +367,7 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    if (!isDeposit && amount > _balance) {
+    if (!isDeposit && amount > (_balance ?? 0)) {
       Navigator.pop(ctx);
       showSimpleNotification(
         const Text('Số dư không đủ để rút',
@@ -329,22 +377,19 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    setState(() {
-      _balance += isDeposit ? amount : -amount;
-    });
     Navigator.pop(ctx);
     showSimpleNotification(
       Text(
         isDeposit
-            ? 'Đã nạp ${_formatCurrency(amount)} ₫'
-            : 'Đã rút ${_formatCurrency(amount)} ₫',
+            ? 'Chức năng nạp tiền chưa được kết nối'
+            : 'Chức năng rút tiền chưa được kết nối',
         style: const TextStyle(color: Colors.white),
       ),
-      background: AppColors.teal,
+      background: Colors.orange,
     );
   }
 
-  String _formatCurrency(double? value) {
+  String _formatCurrency(num? value) {
     final val = (value ?? 0).toInt();
     return val.toString().replaceAllMapped(
         RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');

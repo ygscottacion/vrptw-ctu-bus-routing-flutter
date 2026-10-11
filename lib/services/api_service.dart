@@ -61,6 +61,25 @@ class ApiService {
     }
   }
 
+  Future<int> fetchWalletBalance() async {
+    final token = _authToken;
+    if (token == null) {
+      throw Exception('Vui lòng đăng nhập để xem số dư ví');
+    }
+    final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.walletMe}');
+    final response = await http
+        .get(url, headers: _headers)
+        .timeout(const Duration(seconds: 6));
+    if (response.statusCode == 200) {
+      final body = json.decode(response.body) as Map<String, dynamic>;
+      final balance = body['balance'];
+      if (balance is num) return balance.toInt();
+      throw Exception('Dữ liệu số dư ví không hợp lệ');
+    }
+    throw Exception(
+        'Không thể tải số dư ví (${response.statusCode}): ${_message(response)}');
+  }
+
   Future<List<dynamic>> fetchVehicles() async {
     final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.vehicles}');
     final response = await http.get(url, headers: _headers);
