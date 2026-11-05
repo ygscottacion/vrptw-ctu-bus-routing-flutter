@@ -21,6 +21,8 @@ from app.models.ticket import Ticket
 from app.models.profile import Profile
 from app.models.route_matrix_cache import RouteMatrixCache
 from app.models.wallet import Wallet, WalletTransaction
+from app.models.notification import Notification
+from app.models.gps_log import GpsLog
 
 config = context.config
 

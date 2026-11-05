@@ -120,6 +120,16 @@ def purchase_ticket(
     )
     db.add(tx)
 
+    from app.services.notification_service import add_notification
+    add_notification(
+        db,
+        user_id=user_id,
+        event_key=f"wallet_purchase:{new_ticket.id}",
+        type="transaction",
+        title="Thanh toán vé thành công",
+        body=f"Ví đã trừ {TICKET_PRICE_VND:,} VNĐ cho vé ngày {ticket_in.service_date.strftime('%d/%m/%Y')}. Số dư còn {wallet.balance:,} VNĐ.",
+    )
+
     # 6. Build response dictionary & add Idempotency Record to same transaction if key provided
     if idempotency_key and request_hash:
         response_schema = TicketResponse.model_validate(new_ticket)
@@ -203,6 +213,15 @@ def refund_ticket(
     savepoint = db.begin_nested()
     try:
         db.add(tx)
+        from app.services.notification_service import add_notification
+        add_notification(
+            db,
+            user_id=ticket.user_id,
+            event_key=f"wallet_refund:{ticket.id}",
+            type="transaction",
+            title="Hoàn tiền vé thành công",
+            body=f"{TICKET_PRICE_VND:,} VNĐ đã được hoàn vào ví. Số dư hiện tại {wallet.balance:,} VNĐ.",
+        )
         savepoint.commit()
         if commit:
             db.commit()

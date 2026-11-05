@@ -50,8 +50,9 @@ class RoutingService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
+        if (data['routed'] == false) return const [];
         final pointsRaw = data['points'] as List<dynamic>?;
-        if (pointsRaw != null && pointsRaw.length > waypoints.length) {
+        if (data['routed'] == true && pointsRaw != null && pointsRaw.length > 1) {
           final points = pointsRaw.map<LatLng>((pt) {
             final list = pt as List<dynamic>;
             final lat = (list[0] as num).toDouble();
@@ -59,7 +60,7 @@ class RoutingService {
             return LatLng(lat, lng);
           }).toList();
 
-          if (points.isNotEmpty) {
+          if (points.length > 1) {
             _cache[key] = points;
             return points;
           }
@@ -69,7 +70,7 @@ class RoutingService {
       // Backend gặp lỗi hoặc timeout -> tiếp tục fallback sang OSRM router
     }
 
-    // Fallback sang OSRM (Open Source Routing Machine) để luôn có lộ trình giao thông thực tế
+    // Try OSRM when the backend cannot provide road geometry.
     try {
       final osrmCoords = waypoints
           .map((w) => '${w.longitude},${w.latitude}')
@@ -96,7 +97,7 @@ class RoutingService {
               return LatLng(lat, lng);
             }).toList();
 
-            if (osrmPoints.isNotEmpty) {
+            if (osrmPoints.length > 1) {
               _cache[key] = osrmPoints;
               return osrmPoints;
             }
@@ -107,7 +108,9 @@ class RoutingService {
       // Fallback cuối cùng
     }
 
-    return waypoints;
+    // Never present straight waypoint-to-waypoint chords as road geometry.
+    // Callers can omit the route line while keeping the stop markers visible.
+    return const [];
   }
 }
 

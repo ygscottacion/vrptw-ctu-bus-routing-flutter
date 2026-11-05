@@ -66,6 +66,7 @@ class GoongDirectionService:
                 "distance_km": 0.0,
                 "duration_minutes": 0.0,
                 "points": [[lat, lng] for lat, lng in waypoints],
+                "routed": False,
                 "cached": False,
                 "cached_at": None,
             }
@@ -84,6 +85,42 @@ class GoongDirectionService:
                     goong_metrics.log_goong_call("direction", summary_str, 0.0, 200, cache_hit=True)
                     return res
 
+        # Route each consecutive stop pair independently. Providers can accept a
+        # multi-waypoint request yet return geometry that skips an intermediate
+        # stop; per-leg routing makes every generated stop an explicit endpoint.
+        if len(waypoints) > 2:
+            legs = [
+                self.get_route_polyline([waypoints[index], waypoints[index + 1]], vehicle)
+                for index in range(len(waypoints) - 1)
+            ]
+            if not all(leg.get("routed") for leg in legs):
+                return {
+                    "encoded_polyline": "",
+                    "distance_km": 0.0,
+                    "duration_minutes": 0.0,
+                    "points": [[lat, lng] for lat, lng in waypoints],
+                    "routed": False,
+                    "cached": False,
+                    "cached_at": None,
+                }
+
+            combined_points: List[List[float]] = []
+            for leg in legs:
+                combined_points.extend(leg["points"])
+
+            result = {
+                "encoded_polyline": "",
+                "distance_km": round(sum(leg["distance_km"] for leg in legs), 3),
+                "duration_minutes": round(sum(leg["duration_minutes"] for leg in legs), 2),
+                "points": combined_points,
+                "routed": True,
+                "cached": all(leg.get("cached", False) for leg in legs),
+                "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+            }
+            with self._lock:
+                self._cache[cache_key] = (result, now)
+            return result
+
         # 2. Cache miss -> Call Goong Direction API
         api_key = settings.GOONG_API_KEY
         base_url = settings.GOONG_DIRECTION_BASE_URL.rstrip('/')
@@ -96,6 +133,7 @@ class GoongDirectionService:
                 "distance_km": 0.0,
                 "duration_minutes": 0.0,
                 "points": [[lat, lng] for lat, lng in waypoints],
+                "routed": False,
                 "cached": False,
                 "cached_at": None,
             }
@@ -135,13 +173,18 @@ class GoongDirectionService:
                         # Validate ETA anomaly
                         goong_metrics.validate_eta_anomaly(dist_km, dur_mins, summary_str)
 
-                        decoded_pts = decode_polyline(overview_polyline) if overview_polyline else [[lat, lng] for lat, lng in waypoints]
+                        decoded_pts = decode_polyline(overview_polyline) if overview_polyline else []
+
+                        if len(decoded_pts) < 2:
+                            error_msg = "Goong Direction returned no usable road geometry"
+                            raise ValueError(error_msg)
 
                         result = {
                             "encoded_polyline": overview_polyline,
                             "distance_km": dist_km,
                             "duration_minutes": dur_mins,
                             "points": decoded_pts,
+                            "routed": True,
                             "cached": False,
                             "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
                         }
@@ -183,12 +226,14 @@ class GoongDirectionService:
                             "distance_km": dist_km,
                             "duration_minutes": dur_mins,
                             "points": pts,
+                            "routed": len(pts) > 1,
                             "cached": False,
                             "cached_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
                         }
-                        with self._lock:
-                            self._cache[cache_key] = (fallback_res, now)
-                        return fallback_res
+                        if fallback_res["routed"]:
+                            with self._lock:
+                                self._cache[cache_key] = (fallback_res, now)
+                            return fallback_res
         except Exception as o_err:
             logger.warning(f"OSRM fallback failed: {o_err}")
 
@@ -198,6 +243,7 @@ class GoongDirectionService:
             "distance_km": 0.0,
             "duration_minutes": 0.0,
             "points": [[lat, lng] for lat, lng in waypoints],
+            "routed": False,
             "cached": False,
             "cached_at": None,
         }

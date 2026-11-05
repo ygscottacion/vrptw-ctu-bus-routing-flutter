@@ -17,7 +17,7 @@ class VehicleConfig(BaseModel):
 class RoutingRules(BaseModel):
     max_duration_minutes: int = 90
     service_time_seconds: int = 120
-    capacity_limit: int = 45
+    capacity_limit: int = 29
 
 # Depot Configuration
 DEPOT = LocationConfig(
@@ -55,9 +55,9 @@ STATIONS: List[LocationConfig] = [
 
 # Vehicle Configuration
 VEHICLES: List[VehicleConfig] = [
-    VehicleConfig(id="V1", capacity=45),
-    VehicleConfig(id="V2", capacity=45),
-    VehicleConfig(id="V3", capacity=45, is_backup=True),
+    VehicleConfig(id="V1", capacity=29),
+    VehicleConfig(id="V2", capacity=29),
+    VehicleConfig(id="V3", capacity=29, is_backup=True),
 ]
 
 # Shifts Configuration

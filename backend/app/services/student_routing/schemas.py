@@ -46,7 +46,7 @@ class SchoolConfig(BaseModel):
 
 class Vehicle(BaseModel):
     id: str
-    capacity: int = 45
+    capacity: int = 29
     available_from: str = "05:00"
     start_location: Optional[LocationSchema] = None
     status: VehicleStatus = VehicleStatus.IDLE_AT_SCHOOL

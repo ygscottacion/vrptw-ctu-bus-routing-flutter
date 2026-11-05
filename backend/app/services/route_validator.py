@@ -7,7 +7,7 @@ Module thẩm định tính hợp lệ của lộ trình xe buýt (Route Validat
 4 Quy tắc kiểm tra bắt buộc (Day 9 Contract):
 1. `đủ stop` (Completeness): 100% trạm có nhu cầu / sinh viên được phân bổ, không bỏ sót.
 2. `không lặp` (No Duplicate Stops): Không trùng lặp trạm trung gian trong lộ trình của xe.
-3. `≤ 45 khách` (Capacity Constraint): Tải trọng mỗi xe tuyệt đối <= 45 khách.
+3. `≤ 29 khách` (Capacity Constraint): Tải trọng mỗi xe tuyệt đối <= 29 khách.
 4. `≤ 90 phút` (Max Route Duration): Thời lượng di chuyển toàn tuyến mỗi xe tuyệt đối <= 90 phút.
 """
 
@@ -76,10 +76,10 @@ def calculate_stops_duration_minutes(ordered_stops: Sequence[Mapping[str, Any]])
 class RouteValidator:
     """
     Service thẩm định lời giải phân cụm & tối ưu định tuyến.
-    Đảm bảo 4 tiêu chí cốt lõi: ĐỦ STOP - KHÔNG LẶP - <= 45 KHÁCH - <= 90 PHÚT.
+    Đảm bảo 4 tiêu chí cốt lõi: ĐỦ STOP - KHÔNG LẶP - <= 29 KHÁCH - <= 90 PHÚT.
     """
 
-    MAX_VEHICLE_CAPACITY: int = 45
+    MAX_VEHICLE_CAPACITY: int = 29
     MAX_ROUTE_DURATION_MINUTES: float = 90.0
 
     @classmethod
@@ -88,7 +88,7 @@ class RouteValidator:
         routes: Sequence[Mapping[str, Any]],
         expected_station_ids: Optional[Set[Any]] = None,
         expected_total_demand: Optional[int] = None,
-        max_capacity: int = 45,
+        max_capacity: int = 29,
         max_duration_minutes: float = 90.0,
     ) -> Dict[str, Any]:
         """
@@ -105,7 +105,7 @@ class RouteValidator:
             Tập hợp ID của các trạm cần phục vụ (phục vụ kiểm tra `đủ stop`).
         expected_total_demand : Optional[int]
             Tổng số vé/khách dự kiến (phục vụ kiểm tra `đủ stop`).
-        max_capacity : int, default 45
+        max_capacity : int, default 29
             Sức chứa tối đa của mỗi xe buýt.
         max_duration_minutes : float, default 90.0
             Thời lượng hành trình tối đa của mỗi tuyến xe.
@@ -129,7 +129,7 @@ class RouteValidator:
             total_demand = int(route.get("total_demand", 0))
             stops = list(route.get("ordered_stops", []))
 
-            # ── 1. Quy tắc: <= 45 khách (Chặn quá tải) ──
+            # ── 1. Quy tắc: <= 29 khách (Chặn quá tải) ──
             if total_demand > max_capacity:
                 raise RouteValidationError(
                     error_code="OVERLOAD_VIOLATION",
@@ -212,7 +212,7 @@ class RouteValidator:
         created_routes: Sequence[Tuple[Any, Sequence[Any], Sequence[Any]]],
         expected_tickets_count: int,
         depot_location_id: Any,
-        max_capacity: int = 45,
+        max_capacity: int = 29,
         max_duration_minutes: float = 90.0,
     ) -> None:
         """
@@ -233,7 +233,7 @@ class RouteValidator:
             route_id_str = str(route.id)
             passenger_count = getattr(route, "passenger_count", len(tickets))
 
-            # 1. <= 45 khách
+            # 1. <= 29 khách
             if passenger_count > max_capacity:
                 raise RouteValidationError(
                     error_code="OVERLOAD_VIOLATION",

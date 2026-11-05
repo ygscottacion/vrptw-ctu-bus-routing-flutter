@@ -1,7 +1,7 @@
 # ── Fixed 4 Sessions ──────────────────────────────────────────────────
 PICKUP_SESSIONS = {
-    "MORNING_1": {"id": "MORNING_1", "school_start": "07:00", "vehicle_depart_latest": "05:30"},
-    "MORNING_2": {"id": "MORNING_2", "school_start": "08:30", "vehicle_depart_latest": "07:00"},
+    "MORNING_1": {"id": "MORNING_1", "school_start": "07:00", "vehicle_departure_time": "05:30"},
+    "MORNING_2": {"id": "MORNING_2", "school_start": "08:30", "vehicle_departure_time": "07:00"},
 }
 
 DROPOFF_SESSIONS = {
@@ -10,7 +10,8 @@ DROPOFF_SESSIONS = {
 }
 
 # ── Operating Parameters ──────────────────────────────────────────────
-VEHICLE_CAPACITY         = 45       # Default bus seats
+MAX_PASSENGERS_PER_VEHICLE = 29     # Hard per-route passenger limit, regardless of vehicle metadata.
+VEHICLE_CAPACITY         = MAX_PASSENGERS_PER_VEHICLE
 MAX_SERVICE_RADIUS_KM    = 10.0     # Maximum distance from CTU campus
 BUFFER_MINUTES           = 15       # Safety arrival buffer before school start
 CLASS_ARRIVAL_BUFFER_MINUTES = 10   # Students arrive before class starts
@@ -18,7 +19,8 @@ STATION_TIME_WINDOW_MINUTES = 45   # Flexible pickup window per station
 PICKUP_SERVICE_MINUTES   = 3        # Boarding time at each pickup station
 MAX_ROUTE_DRIVING_MINUTES = 90      # Excludes waiting and station service time
 BOARDING_AT_SCHOOL_MIN   = 10       # Boarding time at CTU campus for dropoff
-MAX_RIDE_TIME_MINUTES    = 45       # Hard constraint: max time student stays on bus
+MAX_RIDE_TIME_MINUTES    = 45       # Restore this limit when ride-time enforcement is re-enabled.
+ENFORCE_MAX_RIDE_TIME    = False    # Temporary: disable the 45-minute passenger ride limit.
 
 # ── Speed by Time of Day (km/h) ───────────────────────────────────────
 SPEED_MORNING_PEAK_KMH   = 25.0     # Morning peak (06:30 - 08:30)

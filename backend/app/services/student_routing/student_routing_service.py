@@ -90,7 +90,10 @@ class StudentRoutingService:
                 f"Tổng số SV ({total_students_requested}) vượt quá giới hạn MVP ({config.MAX_BOOKINGS_PER_JOB})"
             )
 
-        total_capacity = sum(v.capacity for v in vehicles)
+        total_capacity = sum(
+            min(v.capacity, config.MAX_PASSENGERS_PER_VEHICLE)
+            for v in vehicles
+        )
         if total_students_requested > total_capacity:
             return self.response_formatter.format_error(
                 options.session_id, options.trip_type, "CAPACITY_EXCEEDED",
@@ -121,7 +124,7 @@ class StudentRoutingService:
 
             # Check 2: Direct Ride Time Check (Hard Constraint <= 45 mins)
             direct_travel_time_min = (dist_to_school / speed_kmh) * 60.0
-            if direct_travel_time_min > max_ride_time:
+            if config.ENFORCE_MAX_RIDE_TIME and direct_travel_time_min > max_ride_time:
                 infeasible_list.append(InfeasibleStation(
                     station_id=st.id,
                     reason="MAX_RIDE_TIME_EXCEEDED",
@@ -134,7 +137,11 @@ class StudentRoutingService:
         if not feasible_stations:
             return self.response_formatter.format_error(
                 options.session_id, options.trip_type, "INFEASIBLE_ROUTE",
-                "Tất cả các trạm đều vi phạm bán kính hoặc Max Ride Time",
+                (
+                    "Tất cả các trạm đều vi phạm bán kính hoặc Max Ride Time"
+                    if config.ENFORCE_MAX_RIDE_TIME
+                    else "Tất cả các trạm đều nằm ngoài bán kính phục vụ"
+                ),
                 partial_result=PartialResult(
                     feasible_stations=[],
                     infeasible_stations=infeasible_list
@@ -185,7 +192,13 @@ class StudentRoutingService:
                 "time_window_end": st.time_window_end
             })
 
-        vehicle_dicts = [{"id": v.id, "capacity": v.capacity} for v in vehicles]
+        vehicle_dicts = [
+            {
+                "id": v.id,
+                "capacity": min(v.capacity, config.MAX_PASSENGERS_PER_VEHICLE),
+            }
+            for v in vehicles
+        ]
 
         # ── 4. Initial Solution via Sweep Algorithm ───────────────────────────
         try:
@@ -204,10 +217,18 @@ class StudentRoutingService:
 
         # Departure time calculation
         session_info = config.PICKUP_SESSIONS.get(options.session_id.value, {})
-        depart_str = session_info.get("vehicle_depart_latest", "05:30")
+        # This is the actual time the bus leaves the school depot. Use the same
+        # timestamp as the evaluator and response formatter for every leg.
+        depart_str = session_info.get(
+            "vehicle_departure_time",
+            session_info.get("vehicle_depart_latest", "05:30"),
+        )
         departure_mins = self._parse_time_to_minutes(depart_str)
 
-        vehicle_capacities = [v.capacity for v in vehicles]
+        vehicle_capacities = [
+            min(v.capacity, config.MAX_PASSENGERS_PER_VEHICLE)
+            for v in vehicles
+        ]
 
         # ── 5. Route Optimization via Tabu Search (With Fallback to Sweep) ───
         try:
@@ -239,6 +260,90 @@ class StudentRoutingService:
                 class_deadline_mins,
                 options.trip_type.value,
             )
+
+        # Sweep only creates a new route when the estimated driving duration or
+        # capacity is exceeded. A route can still violate the per-student ride
+        # limit because boarding time and pickup-window waiting are not included
+        # in that estimate. Tabu Search can move stops between existing routes,
+        # but it cannot create a route, so try feasible route splits while spare
+        # vehicles are available.
+        def feasibility_rank(evaluation):
+            violations = (
+                evaluation.capacity_violations
+                + evaluation.ride_time_violations
+                + evaluation.route_duration_violations
+                + evaluation.school_arrival_violations
+                + evaluation.time_window_violations
+            )
+            return (
+                violations,
+                evaluation.capacity_violations,
+                evaluation.ride_time_violations,
+                evaluation.route_duration_violations,
+                evaluation.school_arrival_violations,
+                evaluation.time_window_violations,
+                evaluation.objective_value,
+            )
+
+        while not best_eval.is_feasible() and len(optimized_routes) < len(vehicles):
+            best_split = None
+            best_split_rank = feasibility_rank(best_eval)
+            for route_idx, route in enumerate(optimized_routes):
+                for split_at in range(1, len(route)):
+                    candidate_routes = [list(stops) for stops in optimized_routes]
+                    candidate_routes[route_idx:route_idx + 1] = [
+                        list(route[:split_at]),
+                        list(route[split_at:]),
+                    ]
+                    candidate_eval = self.evaluator.evaluate_solution(
+                        candidate_routes,
+                        depot_dict,
+                        dist_matrix,
+                        ttime_matrix,
+                        point_index_map,
+                        vehicle_capacities,
+                        departure_mins,
+                        class_deadline_mins,
+                        options.trip_type.value,
+                    )
+                    candidate_rank = feasibility_rank(candidate_eval)
+                    if candidate_rank < best_split_rank:
+                        best_split = candidate_routes
+                        best_split_rank = candidate_rank
+
+            if best_split is None:
+                break
+
+            try:
+                optimized_routes, best_eval = self.tabu_optimizer.optimize(
+                    initial_routes=best_split,
+                    depot=depot_dict,
+                    distance_matrix=dist_matrix,
+                    travel_time_matrix=ttime_matrix,
+                    point_index_map=point_index_map,
+                    vehicle_capacities=vehicle_capacities,
+                    departure_time_mins=departure_mins,
+                    arrival_deadline_mins=class_deadline_mins,
+                    trip_type=options.trip_type.value,
+                )
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Tabu Search route-split optimization failed: {exc}. "
+                    "Using the best evaluated split."
+                )
+                optimized_routes = best_split
+                best_eval = self.evaluator.evaluate_solution(
+                    optimized_routes,
+                    depot_dict,
+                    dist_matrix,
+                    ttime_matrix,
+                    point_index_map,
+                    vehicle_capacities,
+                    departure_mins,
+                    class_deadline_mins,
+                    options.trip_type.value,
+                )
 
         if len(optimized_routes) > len(vehicles):
             return self.response_formatter.format_error(

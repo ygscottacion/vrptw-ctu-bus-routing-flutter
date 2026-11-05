@@ -133,10 +133,10 @@ class DriverRouteCard extends StatelessWidget {
           children: [
             Icon(Icons.directions_bus_filled_outlined, size: 44, color: Colors.grey),
             SizedBox(height: 12),
-            Text('Chưa có tuyến được phân công',
+            Text('Hôm nay không có tuyến được phân công',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             SizedBox(height: 8),
-            Text('Tuyến sẽ xuất hiện ở đây sau khi hệ thống phân công cho xe của bạn.',
+            Text('Các tuyến của ngày đã qua được lưu trong lịch sử tuyến của tài xế.',
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.grey)),
           ],
         ),

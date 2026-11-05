@@ -1,9 +1,19 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:overlay_support/overlay_support.dart';
+
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
 class NotificationScreen extends StatefulWidget {
-  const NotificationScreen({super.key});
+  const NotificationScreen({
+    super.key,
+    required this.api,
+    required this.isActive,
+  });
+  final ApiService api;
+  final bool isActive;
 
   @override
   State<NotificationScreen> createState() => _NotificationScreenState();
@@ -11,49 +21,100 @@ class NotificationScreen extends StatefulWidget {
 
 class _NotificationScreenState extends State<NotificationScreen> {
   String _filter = 'all';
+  List<_Notif> _notifications = [];
+  bool _loading = true;
+  String? _error;
+  Timer? _refreshTimer;
 
-  final List<_Notif> _notifications = [
-    _Notif(1, 'schedule', true, 'Xe buýt tuyến 1 đang đến',
-        'Xe buýt tuyến 1 sẽ đến trạm CTU trong khoảng 5 phút. Hãy chuẩn bị!',
-        '5 phút trước', AppColors.teal, '⏰'),
-    _Notif(2, 'promo', true, '🎉 Ưu đãi đặc biệt sinh viên CTU!',
-        'Mua vé tháng tháng 3/2026 được giảm 20%. Áp dụng đến 28/02/2026.',
-        '2 giờ trước', AppColors.purple, '🏷️'),
-    _Notif(3, 'schedule', false, 'Thay đổi lịch trình tuyến 2',
-        'Tuyến 2 sẽ thay đổi điểm dừng từ ngày 01/03/2026. Vui lòng xem chi tiết.',
-        'Hôm qua', AppColors.teal, '🚌'),
-    _Notif(4, 'schedule', false, 'Xe buýt bị trễ 10 phút',
-        'Tuyến 3 (7:00) bị trễ do ùn tắc giao thông. Thời gian đến dự kiến: 7:10.',
-        '2 ngày trước', AppColors.orange, '⚠️'),
-    _Notif(5, 'promo', false, 'Chương trình thân thiện môi trường',
-        'Dùng xe buýt CTU giúp giảm 99 triệu kg CO2. Cùng chung tay bảo vệ môi trường!',
-        '1 tuần trước', AppColors.green, '🌳'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) _loadNotifications(silent: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant NotificationScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _loadNotifications();
+    }
+  }
 
   List<_Notif> get _filtered {
     if (_filter == 'all') return _notifications;
-    if (_filter == 'unread') return _notifications.where((n) => n.isUnread).toList();
+    if (_filter == 'unread') return _notifications.where((n) => !n.isRead).toList();
     return _notifications.where((n) => n.type == _filter).toList();
   }
 
-  void _markRead(int id) {
-    setState(() {
-      final idx = _notifications.indexWhere((n) => n.id == id);
-      if (idx != -1) _notifications[idx] = _notifications[idx].copyWith(isUnread: false);
-    });
+  Future<void> _loadNotifications({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final rows = await widget.api.fetchMyNotifications();
+      if (!mounted) return;
+      setState(() {
+        _notifications = rows
+            .whereType<Map>()
+            .map((row) => _Notif.fromJson(Map<String, dynamic>.from(row)))
+            .toList();
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString().replaceFirst('Exception: ', '');
+        _loading = false;
+      });
+    }
   }
 
-  void _markAllRead() {
-    setState(() {
-      for (int i = 0; i < _notifications.length; i++) {
-        _notifications[i] = _notifications[i].copyWith(isUnread: false);
+  Future<void> _setRead(_Notif notification, bool isRead) async {
+    final index = _notifications.indexWhere((n) => n.id == notification.id);
+    if (index < 0 || notification.isRead == isRead) return;
+    final previous = _notifications[index];
+    setState(() => _notifications[index] = previous.copyWith(isRead: isRead));
+    try {
+      await widget.api.markNotificationRead(notification.id, isRead);
+    } catch (e) {
+      if (!mounted) return;
+      final currentIndex =
+          _notifications.indexWhere((item) => item.id == notification.id);
+      if (currentIndex >= 0) {
+        setState(() => _notifications[currentIndex] = previous);
       }
-    });
-    showSimpleNotification(
-      const Text('Đã đánh dấu tất cả là đã đọc',
-          style: TextStyle(color: Colors.white)),
-      background: AppColors.teal,
-    );
+      showSimpleNotification(
+        Text('Không thể cập nhật thông báo: ${e.toString().replaceFirst('Exception: ', '')}',
+            style: const TextStyle(color: Colors.white)),
+        background: AppColors.orange,
+      );
+    }
+  }
+
+  Future<void> _markAllRead() async {
+    final unread = _notifications.where((n) => !n.isRead).toList();
+    for (final notification in unread) {
+      await _setRead(notification, true);
+    }
+    if (mounted && unread.isNotEmpty) {
+      showSimpleNotification(
+        const Text('Đã đánh dấu tất cả là đã đọc', style: TextStyle(color: Colors.white)),
+        background: AppColors.teal,
+      );
+    }
   }
 
   @override
@@ -74,17 +135,37 @@ class _NotificationScreenState extends State<NotificationScreen> {
         children: [
           _buildFilterBar(),
           Expanded(
-            child: filtered.isEmpty
-                ? _buildEmpty()
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.lg,
-                        vertical: AppSpacing.sm),
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: AppSpacing.xs),
-                    itemBuilder: (_, i) => _buildNotifItem(filtered[i]),
-                  ),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_error!, textAlign: TextAlign.center),
+                            const SizedBox(height: AppSpacing.md),
+                            OutlinedButton.icon(
+                              onPressed: _loadNotifications,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Thử lại'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : filtered.isEmpty
+                        ? _buildEmpty()
+                        : RefreshIndicator(
+                            onRefresh: _loadNotifications,
+                            child: ListView.separated(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.lg,
+                                  vertical: AppSpacing.sm),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: AppSpacing.xs),
+                              itemBuilder: (_, i) => _buildNotifItem(filtered[i]),
+                            ),
+                          ),
           ),
         ],
       ),
@@ -95,8 +176,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
     final filters = [
       ('all', 'Tất cả'),
       ('unread', 'Chưa đọc'),
-      ('schedule', 'Lịch trình'),
-      ('promo', 'Khuyến mãi'),
+      ('trip', 'Chuyến đi'),
+      ('transaction', 'Giao dịch'),
     ];
     return Container(
       color: AppColors.white,
@@ -138,21 +219,29 @@ class _NotificationScreenState extends State<NotificationScreen> {
   }
 
   Widget _buildNotifItem(_Notif n) {
+    final color = switch (n.type) {
+      'trip' => AppColors.teal,
+      'transaction' => AppColors.green,
+      _ => AppColors.purple,
+    };
+    final icon = switch (n.type) {
+      'trip' => '🚌',
+      'transaction' => '💳',
+      _ => '🔔',
+    };
     return GestureDetector(
-      onTap: () => _markRead(n.id),
+      onTap: () => _setRead(n, true),
       child: Container(
         padding: const EdgeInsets.all(AppSpacing.md),
         margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
         decoration: BoxDecoration(
-          color: n.isUnread ? const Color(0xFFF0FDFC) : AppColors.white,
+          color: !n.isRead ? const Color(0xFFF0FDFC) : AppColors.white,
           borderRadius: BorderRadius.circular(AppRadius.sm),
-          border: n.isUnread
-              ? const Border(
-                  left: BorderSide(color: AppColors.teal, width: 3))
+          border: !n.isRead
+              ? const Border(left: BorderSide(color: AppColors.teal, width: 3))
               : null,
           boxShadow: [
-            BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04), blurRadius: 6)
+            BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6)
           ],
         ),
         child: Row(
@@ -161,11 +250,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
             Container(
               width: 40,
               height: 40,
-              decoration: BoxDecoration(
-                  color: n.iconColor, shape: BoxShape.circle),
-              child: Center(
-                  child: Text(n.icon,
-                      style: const TextStyle(fontSize: 16))),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Center(child: Text(icon, style: const TextStyle(fontSize: 16))),
             ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
@@ -175,32 +261,28 @@ class _NotificationScreenState extends State<NotificationScreen> {
                   Text(n.title,
                       style: TextStyle(
                           fontSize: 13,
-                          fontWeight: n.isUnread
-                              ? FontWeight.w700
-                              : FontWeight.w600,
+                          fontWeight: !n.isRead ? FontWeight.w700 : FontWeight.w600,
                           color: AppColors.textPrimary)),
                   const SizedBox(height: 3),
                   Text(n.body,
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                           height: 1.4)),
                   const SizedBox(height: 4),
-                  Text(n.time,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textMuted)),
+                  Text(_formatTime(n.createdAt),
+                      style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
                 ],
               ),
             ),
-            if (n.isUnread)
+            if (!n.isRead)
               Container(
                 width: 10,
                 height: 10,
                 margin: const EdgeInsets.only(top: 4, left: 8),
-                decoration: const BoxDecoration(
-                    color: AppColors.teal, shape: BoxShape.circle),
+                decoration: const BoxDecoration(color: AppColors.teal, shape: BoxShape.circle),
               ),
           ],
         ),
@@ -208,33 +290,63 @@ class _NotificationScreenState extends State<NotificationScreen> {
     );
   }
 
-  Widget _buildEmpty() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Text('🔔', style: TextStyle(fontSize: 48)),
-          SizedBox(height: AppSpacing.md),
-          Text('Không có thông báo',
-              style: TextStyle(
-                  fontSize: 15,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
+  String _formatTime(DateTime time) {
+    final difference = DateTime.now().difference(time.toLocal());
+    if (difference.isNegative || difference.inMinutes < 1) return 'Vừa xong';
+    if (difference.inMinutes < 60) return '${difference.inMinutes} phút trước';
+    if (difference.inHours < 24) return '${difference.inHours} giờ trước';
+    if (difference.inDays < 7) return '${difference.inDays} ngày trước';
+    return '${time.toLocal().day.toString().padLeft(2, '0')}/${time.toLocal().month.toString().padLeft(2, '0')}/${time.toLocal().year}';
   }
+
+  Widget _buildEmpty() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: const [
+            Text('🔔', style: TextStyle(fontSize: 48)),
+            SizedBox(height: AppSpacing.md),
+            Text('Không có thông báo',
+                style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textMuted,
+                    fontWeight: FontWeight.w500)),
+          ],
+        ),
+      );
 }
 
 class _Notif {
-  final int id;
-  final String type, title, body, time, icon;
-  final bool isUnread;
-  final Color iconColor;
+  const _Notif({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.body,
+    required this.isRead,
+    required this.createdAt,
+  });
 
-  const _Notif(this.id, this.type, this.isUnread, this.title, this.body,
-      this.time, this.iconColor, this.icon);
+  final String id;
+  final String type;
+  final String title;
+  final String body;
+  final bool isRead;
+  final DateTime createdAt;
 
-  _Notif copyWith({bool? isUnread}) => _Notif(
-      id, type, isUnread ?? this.isUnread, title, body, time, iconColor, icon);
+  factory _Notif.fromJson(Map<String, dynamic> json) => _Notif(
+        id: json['id'].toString(),
+        type: json['type']?.toString() ?? 'general',
+        title: json['title']?.toString() ?? '',
+        body: json['body']?.toString() ?? '',
+        isRead: json['is_read'] == true,
+        createdAt: DateTime.tryParse(json['created_at']?.toString() ?? '') ?? DateTime.now(),
+      );
+
+  _Notif copyWith({bool? isRead}) => _Notif(
+        id: id,
+        type: type,
+        title: title,
+        body: body,
+        isRead: isRead ?? this.isRead,
+        createdAt: createdAt,
+      );
 }

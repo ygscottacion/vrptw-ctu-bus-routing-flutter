@@ -117,15 +117,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            'Vai trò: ${role.toUpperCase()}',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.teal,
-            ),
-          ),
           if (user['phone'] != null) ...[
             const SizedBox(height: 2),
             Text(

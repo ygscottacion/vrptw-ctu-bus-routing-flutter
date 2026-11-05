@@ -175,12 +175,12 @@ class SolutionEvaluator:
         total_distance += distance_matrix[prev_idx][depot_idx]
         total_travel_time += travel_time_matrix[prev_idx][depot_idx]
         current_time += travel_time_matrix[prev_idx][depot_idx]
-        if trip_type == "PICKUP":
+        if config.ENFORCE_MAX_RIDE_TIME and trip_type == "PICKUP":
             ride_time_violations = sum(
                 1 for pickup_done_at in pickup_completion_times
                 if current_time - pickup_done_at > self.max_ride_time_minutes
             )
-        else:
+        elif config.ENFORCE_MAX_RIDE_TIME:
             ride_time_violations = sum(
                 1 for pickup_done_at in pickup_completion_times
                 if pickup_done_at - departure_time_mins > self.max_ride_time_minutes

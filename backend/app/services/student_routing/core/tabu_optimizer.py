@@ -136,9 +136,25 @@ class TabuSearchOptimizer:
                         move_key = ("relocate", st_id, (r2, pos))
                         candidates.append((new_routes, move_key))
 
-        # Khống chế mẫu không gian lân cận tối đa 80 candidates để tối ưu thời gian chạy
-        if len(candidates) > 80:
-            candidates = random.sample(candidates, 80)
+        # For a one-bus load within capacity, inspect a broader neighborhood
+        # before the service considers paying for another bus. Small cases stay
+        # exhaustive; larger cases remain bounded for runtime.
+        one_route_demand = (
+            sum(
+                int(stop.get("demand", stop.get("pickup_student_count", 1)))
+                for route in routes
+                for stop in route
+            )
+            if num_routes == 1
+            else None
+        )
+        candidate_limit = (
+            500
+            if num_routes == 1 and one_route_demand <= config.MAX_PASSENGERS_PER_VEHICLE
+            else 80
+        )
+        if len(candidates) > candidate_limit:
+            candidates = random.sample(candidates, candidate_limit)
 
         return candidates
 

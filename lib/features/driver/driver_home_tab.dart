@@ -80,10 +80,19 @@ class _DriverHomeTabState extends State<DriverHomeTab>
   }
 
   Map<String, dynamic>? _selectAssignedRoute() {
+    final today = DateTime.now();
+    final todayKey = DateTime(today.year, today.month, today.day);
     final routes = _assignedRoutes
         .whereType<Map>()
         .map((route) => Map<String, dynamic>.from(route))
-        .toList();
+        .where((route) {
+      final serviceDate =
+          DateTime.tryParse(route['service_date']?.toString() ?? '');
+      if (serviceDate == null) return false;
+      final serviceDay =
+          DateTime(serviceDate.year, serviceDate.month, serviceDate.day);
+      return serviceDay == todayKey;
+    }).toList();
     if (routes.isEmpty) return null;
 
     for (final route in routes) {
@@ -115,20 +124,24 @@ class _DriverHomeTabState extends State<DriverHomeTab>
     final willBeActive = !_isShiftActive;
 
     if (willBeActive) {
-      if (routeId.isNotEmpty) {
-        try {
-          await widget.api.startRoute(routeId);
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Không thể bắt đầu chuyến xe: $e'),
-                backgroundColor: Colors.red[800],
-              ),
-            );
-          }
-          return;
+      if (routeId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bạn chưa được phân công chuyến xe.')),
+        );
+        return;
+      }
+      try {
+        await widget.api.startRoute(routeId);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Không thể bắt đầu chuyến xe: $e'),
+              backgroundColor: Colors.red[800],
+            ),
+          );
         }
+        return;
       }
       setState(() => _isShiftActive = true);
       final success = await GpsService().startTracking(
@@ -137,8 +150,8 @@ class _DriverHomeTabState extends State<DriverHomeTab>
       );
       if (mounted) {
         final msg = success
-            ? 'Đã bắt đầu ca làm việc! Tuyến xe đang hoạt động và hệ thống phát vị trí định kỳ 15s/lần.'
-            : 'Đã bật ca, nhưng vui lòng cấp quyền vị trí để phát GPS xe buýt.';
+            ? 'Đã bắt đầu ca làm việc. Vị trí xe được cập nhật định kỳ.'
+            : 'Chuyến đã bắt đầu nhưng chưa gửi được GPS. Hãy bật định vị và cấp quyền vị trí.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
@@ -151,7 +164,15 @@ class _DriverHomeTabState extends State<DriverHomeTab>
         try {
           await widget.api.endRoute(routeId);
         } catch (e) {
-          // Continue stopping shift locally
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Không thể kết thúc chuyến xe: $e'),
+                backgroundColor: Colors.red[800],
+              ),
+            );
+          }
+          return;
         }
       }
       GpsService().stopTracking();
@@ -159,7 +180,8 @@ class _DriverHomeTabState extends State<DriverHomeTab>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Đã kết thúc ca làm việc và chuyển chuyến xe sang trạng thái hoàn tất.'),
+            content: const Text(
+                'Đã kết thúc ca làm việc và chuyển chuyến xe sang trạng thái hoàn tất.'),
             backgroundColor: Colors.grey[800],
           ),
         );
@@ -167,11 +189,11 @@ class _DriverHomeTabState extends State<DriverHomeTab>
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    final driverName =
-        widget.user['full_name']?.toString() ?? widget.user['username']?.toString() ?? 'Tài xế';
+    final driverName = widget.user['full_name']?.toString() ??
+        widget.user['username']?.toString() ??
+        'Tài xế';
     final nextRoute = _selectAssignedRoute();
 
     return Scaffold(
@@ -217,10 +239,10 @@ class _DriverHomeTabState extends State<DriverHomeTab>
               ],
             ),
             const Spacer(),
-            Column(
+            const Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Text(
                   'MyCTU BUS',
                   style: TextStyle(

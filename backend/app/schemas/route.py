@@ -101,6 +101,7 @@ class PolylineResponse(BaseModel):
     distance_km: float = Field(..., description="Tổng quãng đường tính bằng km")
     duration_minutes: float = Field(..., description="Tổng thời gian di chuyển tính bằng phút")
     points: List[List[float]] = Field(default_factory=list, description="Danh sách các cặp tọa độ [[lat, lng], ...]")
+    routed: bool = Field(False, description="True khi points là hình học đường bộ đã được định tuyến; False khi chỉ là waypoint dự phòng")
     cached: bool = Field(False, description="Xác định kết quả có được trả về từ cache 24h hay không")
     cached_at: Optional[str] = Field(None, description="Thời gian lưu cache (ISO 8601 UTC)")
 

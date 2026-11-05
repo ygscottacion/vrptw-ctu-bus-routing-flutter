@@ -7,6 +7,34 @@ from app.services.student_routing.helpers.distance_matrix import StaticDistanceM
 from app.services.student_routing import config as routing_config
 
 
+def expand_location_demands(
+    locations: List[Dict[str, Any]],
+    max_chunk_demand: int,
+) -> tuple[List[Dict[str, Any]], List[int]]:
+    """Split oversized station demand into solver nodes while keeping source indexes."""
+    if max_chunk_demand <= 0:
+        return [], []
+
+    expanded: List[Dict[str, Any]] = []
+    source_indexes: List[int] = []
+    for source_index, location in enumerate(locations):
+        remaining = int(location.get("demand", location.get("pickup_student_count", 1)))
+        if remaining <= 0:
+            remaining = 1
+        while remaining:
+            chunk = min(remaining, max_chunk_demand)
+            expanded.append({
+                **location,
+                "id": f"location_{len(expanded)}",
+                "demand": chunk,
+                "pickup_student_count": chunk,
+                "dropoff_student_count": chunk,
+            })
+            source_indexes.append(source_index)
+            remaining -= chunk
+    return expanded, source_indexes
+
+
 class RouteSolverError(Exception):
     def __init__(self, error_code: str, message: str):
         self.error_code = error_code
@@ -54,12 +82,22 @@ class VRPTWSolverService:
             location=LocationSchema(lat=school_lat, lng=school_lng)
         )
 
+        effective_capacities = [
+            min(
+                int(v.get("capacity") or routing_config.MAX_PASSENGERS_PER_VEHICLE),
+                routing_config.MAX_PASSENGERS_PER_VEHICLE,
+            )
+            for v in vehicles
+        ]
         vehicle_models = [
             Vehicle(
                 id=str(v["id"]),
-                capacity=v.get("capacity", 45)
-            ) for v in vehicles
+                capacity=effective_capacities[index],
+            ) for index, v in enumerate(vehicles)
         ]
+
+        max_vehicle_capacity = max(effective_capacities, default=0)
+        locations, _ = expand_location_demands(locations, max_vehicle_capacity)
 
         # The public solver contract intentionally contains no persistence IDs.
         # It always emits deterministic technical keys owned by this solve call.
@@ -113,7 +151,11 @@ class VRPTWSolverService:
                         "time_window_start": s.time_window_start,
                         "time_window_end": s.time_window_end,
                         "travel_time_from_previous_minutes": s.travel_time_from_previous_minutes,
-                        "demand": s.students_picked
+                        "demand": (
+                            s.students_picked
+                            if route_obj.trip_type == TripType.PICKUP
+                            else s.students_dropped
+                        ),
                     })
 
                 final_routes.append({

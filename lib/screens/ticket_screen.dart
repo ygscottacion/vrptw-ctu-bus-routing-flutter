@@ -5,8 +5,9 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
 class TicketScreen extends StatefulWidget {
-  const TicketScreen({super.key, required this.api});
+  const TicketScreen({super.key, required this.api, this.initialTab = 0});
   final ApiService api;
+  final int initialTab;
 
   @override
   State<TicketScreen> createState() => _TicketScreenState();
@@ -29,8 +30,8 @@ class _TicketScreenState extends State<TicketScreen>
   bool _fetchingTickets = false;
   Timer? _ticketRefreshTimer;
 
-  bool _isBuying = false;
-  String? _buyError;
+  bool _isBooking = false;
+  String? _bookingError;
 
   /// Cache Future theo routeId de tranh goi lai API moi lan rebuild widget
   /// (FutureBuilder se goi lai future moi lan build neu khong cache).
@@ -73,7 +74,11 @@ class _TicketScreenState extends State<TicketScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab == 1 ? 1 : 0,
+    );
     _dateOptions = _buildDateOptions();
     final firstBookable = _dateOptions.firstWhere(
       (d) => d.bookable,
@@ -132,10 +137,7 @@ class _TicketScreenState extends State<TicketScreen>
         final r = items[i] as Map<String, dynamic>;
         final id = r['id'].toString(); // UUID string
         final label = r['name']?.toString() ?? 'Trạm $id';
-        // Gia dong 7.000d moi tram: LocationResponse backend khong co field
-        // gia (chi co name/lat/lng/time_window/demand) - day la thiet ke
-        // hien tai cua backend, khong phai Flutter tu bia.
-        loadedRoutes.add(_Route(id, label, 7000, colors[i % colors.length]));
+        loadedRoutes.add(_Route(id, label, colors[i % colors.length]));
       }
 
       setState(() {
@@ -198,25 +200,12 @@ class _TicketScreenState extends State<TicketScreen>
     super.dispose();
   }
 
-  String _formatVND(int n) {
-    return '${n.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.')}đ';
-  }
-
   String _formatDateShort(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
 
   String _weekdayLabel(DateTime d) {
     const labels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
     return labels[d.weekday - 1];
-  }
-
-  Map<String, int> get _price {
-    if (_routes.isEmpty || _selectedRoute == null) {
-      return {'original': 7000, 'discount': 0, 'total': 7000};
-    }
-    final route = _routes.firstWhere((r) => r.id == _selectedRoute);
-    // MVP chi ban 1 loai ve luot duy nhat, khong giam gia.
-    return {'original': route.price, 'discount': 0, 'total': route.price};
   }
 
   /// Nhan dien tram CTU (diem xuat phat/ket thuc mac dinh, khong can cho
@@ -247,7 +236,7 @@ class _TicketScreenState extends State<TicketScreen>
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         title: const Text(
-          'Vé & Check-in',
+          'Vé của tôi & Đặt vé',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         elevation: 0,
@@ -263,7 +252,7 @@ class _TicketScreenState extends State<TicketScreen>
               const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
           tabs: const [
             Tab(text: 'Vé của tôi'),
-            Tab(text: 'Mua vé'),
+            Tab(text: 'Đặt vé'),
           ],
         ),
       ),
@@ -655,7 +644,7 @@ class _TicketScreenState extends State<TicketScreen>
                 Expanded(child: _detailItem('Mã vé', t.id)),
                 Expanded(child: _detailItem('Loại vé', t.type)),
                 Expanded(
-                    child: _detailItem('Ngày mua', t.purchasedDate,
+                    child: _detailItem('Ngày đặt', t.purchasedDate,
                         isRight: true)),
               ],
             ),
@@ -774,7 +763,7 @@ class _TicketScreenState extends State<TicketScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Chưa có trạm đón khả dụng. Việc mua vé không cần tuyến đã sinh, nhưng cần có trạm đón để gắn vào vé.',
+                          'Chưa có trạm đón khả dụng. Bạn có thể đặt vé trước khi tuyến được tạo, nhưng cần có trạm đón để gắn vào vé.',
                           style: TextStyle(color: AppColors.textMuted),
                         ),
                         TextButton.icon(
@@ -793,7 +782,7 @@ class _TicketScreenState extends State<TicketScreen>
                   )
                 else
                   ..._selectableRoutes.map((r) => _buildRouteOption(r)),
-                if (_buyError != null) ...[
+                if (_bookingError != null) ...[
                   const SizedBox(height: AppSpacing.md),
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -812,7 +801,7 @@ class _TicketScreenState extends State<TicketScreen>
                         Expanded(
                             child: Semantics(
                               liveRegion: true,
-                              child: Text(_buyError!,
+                              child: Text(_bookingError!,
                                   style: const TextStyle(
                                       color: Colors.red, fontSize: 13)),
                             )),
@@ -846,7 +835,7 @@ class _TicketScreenState extends State<TicketScreen>
                 ? null
                 : () => setState(() {
                       _serviceDate = option.date;
-                      _buyError = null;
+                      _bookingError = null;
                     }),
             child: Opacity(
               opacity: disabled ? 0.4 : 1,
@@ -929,9 +918,8 @@ class _TicketScreenState extends State<TicketScreen>
   }
 
   Widget _buildCheckoutBottomBar() {
-    final p = _price;
-    final canBuy =
-        _isSelectedDateBookable && !_isBuying && _selectedRoute != null;
+    final canBook =
+        _isSelectedDateBookable && !_isBooking && _selectedRoute != null;
     return Container(
       padding: const EdgeInsets.fromLTRB(
           AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 30),
@@ -949,25 +937,11 @@ class _TicketScreenState extends State<TicketScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Tổng thanh toán',
-                  style:
-                      TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-              Text(_formatVND(p['total']!),
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.teal)),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
           SizedBox(
             width: double.infinity,
             height: 54,
             child: ElevatedButton(
-              onPressed: canBuy ? _handleBuyTicket : null,
+              onPressed: canBook ? _handleBookTicket : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.teal,
                 foregroundColor: Colors.white,
@@ -976,7 +950,7 @@ class _TicketScreenState extends State<TicketScreen>
                     borderRadius: BorderRadius.circular(AppRadius.md)),
                 elevation: 0,
               ),
-              child: _isBuying
+              child: _isBooking
                   ? const SizedBox(
                       height: 22,
                       width: 22,
@@ -987,7 +961,7 @@ class _TicketScreenState extends State<TicketScreen>
                           ? 'Ngày đã hết hạn đặt'
                           : (_selectedRoute == null
                               ? 'Chọn trạm đón để tiếp tục'
-                              : 'Thanh toán ngay'),
+                              : 'Xác nhận đặt vé'),
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
             ),
@@ -1048,10 +1022,6 @@ class _TicketScreenState extends State<TicketScreen>
                           fontWeight:
                               isActive ? FontWeight.bold : FontWeight.w600,
                           color: AppColors.textPrimary)),
-                  const SizedBox(height: 2),
-                  Text('Giá vé lượt: ${_formatVND(r.price)}',
-                      style: const TextStyle(
-                          fontSize: 13, color: AppColors.textSecondary)),
                 ],
               ),
             ),
@@ -1078,17 +1048,17 @@ class _TicketScreenState extends State<TicketScreen>
     );
   }
 
-  Future<void> _handleBuyTicket() async {
+  Future<void> _handleBookTicket() async {
     if (_selectedRoute == null) return;
     if (!_isSelectedDateBookable) {
-      setState(() => _buyError =
+      setState(() => _bookingError =
           'Ngày chạy đã chọn đã quá hạn đặt vé (22:00 hôm trước). Vui lòng chọn ngày khác.');
       return;
     }
 
     setState(() {
-      _isBuying = true;
-      _buyError = null;
+      _isBooking = true;
+      _bookingError = null;
     });
 
     final route = _routes.firstWhere((r) => r.id == _selectedRoute);
@@ -1104,14 +1074,14 @@ class _TicketScreenState extends State<TicketScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isBuying = false;
-        _buyError = _friendlyBuyError(e);
+        _isBooking = false;
+        _bookingError = _friendlyBookingError(e);
       });
       return;
     }
 
     if (!mounted) return;
-    setState(() => _isBuying = false);
+    setState(() => _isBooking = false);
 
     showModalBottomSheet(
       context: context,
@@ -1152,7 +1122,7 @@ class _TicketScreenState extends State<TicketScreen>
                   color: Colors.green, size: 64),
             ),
             const SizedBox(height: AppSpacing.md),
-            const Text('Thanh toán thành công!',
+            const Text('Đặt vé thành công!',
                 style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -1235,7 +1205,7 @@ class _TicketScreenState extends State<TicketScreen>
     );
   }
 
-  String _friendlyBuyError(Object error) {
+  String _friendlyBookingError(Object error) {
     final msg = error.toString();
     if (msg.contains('401'))
       return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
@@ -1255,9 +1225,8 @@ class _TicketScreenState extends State<TicketScreen>
 
 class _Route {
   final String id, label; // id la UUID string
-  final int price;
   final Color color;
-  const _Route(this.id, this.label, this.price, this.color);
+  const _Route(this.id, this.label, this.color);
 }
 
 /// Ve theo dung 5 trang thai that tu backend TicketStatus (Ngay 4):

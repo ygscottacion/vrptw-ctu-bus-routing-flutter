@@ -31,10 +31,10 @@ Hệ thống tối ưu lộ trình xe buýt phục vụ sinh viên **Trường �
 
 ### 1.3. Lịch 4 Ca Cố Định
 
-| Ca | Loại | Giờ chính thức | Xe xuất phát chậm nhất | Ghi chú |
+| Ca | Loại | Giờ chính thức | Giờ xe rời trường | Ghi chú |
 | :--- | :--- | :--- | :--- | :--- |
-| **Ca Sáng 1** | Chiều Đi | **07:00** | ~05:30 | Cao điểm sáng |
-| **Ca Sáng 2** | Chiều Đi | **08:30** | ~07:00 | Sau cao điểm |
+| **Ca Sáng 1** | Chiều Đi | **07:00** | 05:30 (giờ xe rời trường) | Cao điểm sáng |
+| **Ca Sáng 2** | Chiều Đi | **08:30** | 07:00 (giờ xe rời trường) | Sau cao điểm |
 | **Ca Trưa 1** | Chiều Về | **10:00** | 10:00 + boarding | Tan học sớm |
 | **Ca Trưa 2** | Chiều Về | **11:30** | 11:30 + boarding | Tan học chính |
 
@@ -46,8 +46,8 @@ Hệ thống tối ưu lộ trình xe buýt phục vụ sinh viên **Trường �
 | :--- | :--- | :--- | :--- |
 | Trường phục vụ | Trường ĐH Cần Thơ | Center Point | Tọa độ: `10.0302°N, 105.7721°E` |
 | Bán kính phục vụ | **10 km** | **HARD Feasibility** | `MAX_SERVICE_RADIUS_KM` trong `config.py` |
-| Capacity mỗi xe | **45 chỗ** | **HARD Constraint** | Tính theo $\sum \text{student\_demand}_i \le 45$, không tính theo số trạm |
-| Maximum Ride Time | **45 phút** | **HARD Feasibility** | $RideTime_i = ArrivalTime_i - RouteDepartureTime \le 45m$. Nếu vượt $\implies$ reject trạm đó với lý do `MAX_RIDE_TIME_EXCEEDED` |
+| Capacity mỗi xe | **29 chỗ** | **HARD Constraint** | Tính theo $\sum \text{student\_demand}_i \le 29$, không tính theo số trạm |
+| Maximum Ride Time | **Tạm tắt** | Configurable | Có thể bật lại qua `ENFORCE_MAX_RIDE_TIME`; ngưỡng được giữ ở 45 phút |
 | Time Window Policy | **SOFT** | **SOFT Penalty** | Penalty tính vào Objective. Late penalty ($10.0$) > Early penalty ($0.5$) |
 | Buffer đến trường | 15 phút | Departure Buffer | Xe phải đến trường trước giờ học |
 | Boarding tại trường | 10 phút | Return Boarding | Thời gian SV lên xe chiều về |
@@ -83,8 +83,8 @@ backend/app/services/student_routing/
 ```python
 # ── Ca học ────────────────────────────────────────────────────────────
 PICKUP_SESSIONS = {
-    "MORNING_1": {"id": "MORNING_1", "school_start": "07:00", "vehicle_depart_latest": "05:30"},
-    "MORNING_2": {"id": "MORNING_2", "school_start": "08:30", "vehicle_depart_latest": "07:00"},
+    "MORNING_1": {"id": "MORNING_1", "school_start": "07:00", "vehicle_departure_time": "05:30"},
+    "MORNING_2": {"id": "MORNING_2", "school_start": "08:30", "vehicle_departure_time": "07:00"},
 }
 
 DROPOFF_SESSIONS = {
@@ -93,11 +93,13 @@ DROPOFF_SESSIONS = {
 }
 
 # ── Thông số vận hành ─────────────────────────────────────────────────
-VEHICLE_CAPACITY         = 45       # Chỗ ngồi
+MAX_PASSENGERS_PER_VEHICLE = 29     # Giới hạn cứng cho mỗi tuyến
+VEHICLE_CAPACITY         = MAX_PASSENGERS_PER_VEHICLE
 MAX_SERVICE_RADIUS_KM    = 10.0     # Bán kính phục vụ tính từ CTU
 BUFFER_MINUTES           = 15       # Đệm an toàn trước giờ học
 BOARDING_AT_SCHOOL_MIN   = 10       # Thời gian lên xe tại trường (chiều về)
-MAX_RIDE_TIME_MINUTES    = 45       # Thời gian ngồi xe tối đa (HARD constraint)
+MAX_RIDE_TIME_MINUTES    = 45       # Ngưỡng khi ENFORCE_MAX_RIDE_TIME được bật
+ENFORCE_MAX_RIDE_TIME    = False    # Tạm tắt theo yêu cầu
 
 # ── Speed by Time of Day (km/h) ───────────────────────────────────────
 SPEED_MORNING_PEAK_KMH   = 25.0     # Cao điểm sáng (06:30 - 08:30)
@@ -151,12 +153,10 @@ Input Validation
       ↓
 Service Radius Check (≤ 10km)
       ↓
-Ride Time Feasibility Preprocessing (Max Ride Time ≤ 45m)
-      │
-      ├── Infeasible → Reject individual station (Reason = MAX_RIDE_TIME_EXCEEDED)
-      │
-      └── Feasible Stations
-             ↓
+Ride Time Feasibility Preprocessing (skipped while ENFORCE_MAX_RIDE_TIME = False)
+      ↓
+Feasible Stations
+      ↓
       Distance / Travel Time Matrix (OSRM with 3s Timeout & Fallback)
              ↓
       Sweep Algorithm (SweepClusterer -> Initial Solution)

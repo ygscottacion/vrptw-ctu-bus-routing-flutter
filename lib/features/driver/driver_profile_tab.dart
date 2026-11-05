@@ -71,7 +71,14 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
             if (routeId.isNotEmpty) routeIds.add(routeId);
 
             final status = r['status']?.toString();
-            if (status == 'completed') {
+            final serviceDate = DateTime.tryParse(r['service_date']?.toString() ?? '');
+            final today = DateTime.now();
+            final serviceDay = serviceDate == null
+                ? null
+                : DateTime(serviceDate.year, serviceDate.month, serviceDate.day);
+            final todayDay = DateTime(today.year, today.month, today.day);
+            if (status == 'completed' ||
+                (serviceDay != null && serviceDay.isBefore(todayDay))) {
               completed++;
             }
             if (r['total_distance'] != null) {

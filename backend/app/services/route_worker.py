@@ -16,7 +16,7 @@ from app.models.route_job import RouteJob, RouteJobStatus
 from app.models.ticket import Ticket, TicketStatus
 from app.models.vehicle import Vehicle
 from app.services.student_routing.schemas import SessionId, TripType
-from app.services.vrptw_solver import VRPTWSolverService
+from app.services.vrptw_solver import VRPTWSolverService, expand_location_demands
 from app.services.route_validator import RouteValidator, RouteValidationError
 
 logger = logging.getLogger(__name__)
@@ -105,8 +105,13 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
             raise RouteStopValidationError(job_id, f"Route {route.id} contains an unassigned ticket.")
         if route.passenger_count != len(tickets):
             raise RouteStopValidationError(job_id, f"Route {route.id} passenger_count mismatch.")
-        if route.passenger_count > 45:
-            raise RouteStopValidationError(job_id, f"Route {route.id} exceeds maximum capacity of 45 passengers.", "OVERLOAD_VIOLATION")
+        from app.services.student_routing import config as routing_config
+        if route.passenger_count > routing_config.MAX_PASSENGERS_PER_VEHICLE:
+            raise RouteStopValidationError(
+                job_id,
+                f"Route {route.id} exceeds maximum capacity of {routing_config.MAX_PASSENGERS_PER_VEHICLE} passengers.",
+                "OVERLOAD_VIOLATION",
+            )
         assigned_ids.update(str(ticket.id) for ticket in tickets)
     if len(assigned_ids) != expected_tickets_count:
         raise RouteStopValidationError(job_id, f"Assigned {len(assigned_ids)} of {expected_tickets_count} tickets.", "ROUTE_STOP_COUNT_MISMATCH")
@@ -117,7 +122,7 @@ def _validate_route_and_stops(job_id: str, created_routes: Sequence[Tuple[Route,
             created_routes=created_routes,
             expected_tickets_count=expected_tickets_count,
             depot_location_id=depot_location_id,
-            max_capacity=45,
+            max_capacity=routing_config.MAX_PASSENGERS_PER_VEHICLE,
             max_duration_minutes=90.0,
         )
     except RouteValidationError as exc:
@@ -177,10 +182,10 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
             locations = db.query(Location).filter(Location.id.in_(location_ids)).order_by(Location.id).all()
             if len(locations) != len(location_ids):
                 raise ValueError("One or more pickup locations no longer exist.")
-            location_dicts: List[Dict[str, Any]] = []
+            base_location_dicts: List[Dict[str, Any]] = []
             for index, location in enumerate(locations):
                 demand = len(tickets_by_location[str(location.id)])
-                location_dicts.append({
+                base_location_dicts.append({
                     "id": f"location_{index}",
                     "name": location.name,
                     "latitude": location.latitude,
@@ -189,11 +194,42 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                     "time_window_start": location.time_window_start.strftime("%H:%M") if location.time_window_start else "06:00",
                     "time_window_end": location.time_window_end.strftime("%H:%M") if location.time_window_end else "07:30"
                 })
-            uuid_lookup = _build_uuid_lookup(depot_id, locations, location_dicts)
 
             vehicles = db.query(Vehicle).all()
             if not vehicles:
                 raise ValueError("No vehicles available for route generation.")
+            vehicles.sort(
+                key=lambda vehicle: min(
+                    int(vehicle.capacity or routing_config.MAX_PASSENGERS_PER_VEHICLE),
+                    routing_config.MAX_PASSENGERS_PER_VEHICLE,
+                ),
+                reverse=True,
+            )
+            vehicle_capacities = [
+                min(
+                    int(vehicle.capacity or routing_config.MAX_PASSENGERS_PER_VEHICLE),
+                    routing_config.MAX_PASSENGERS_PER_VEHICLE,
+                )
+                for vehicle in vehicles
+            ]
+            largest_vehicle_capacity = max(vehicle_capacities, default=0)
+            if largest_vehicle_capacity <= 0:
+                raise RouteStopValidationError(
+                    job_id_str,
+                    "Không có xe nào có sức chứa hợp lệ.",
+                    "NO_VEHICLE_AVAILABLE",
+                )
+
+            # A busy stop may have more tickets than one bus can carry. Split
+            # its passenger demand into solver-only nodes that map back to the
+            # same database location. The hard route limit guarantees chunks
+            # for one location cannot be combined on the same route.
+            location_dicts, source_indexes = expand_location_demands(
+                base_location_dicts,
+                largest_vehicle_capacity,
+            )
+            solver_locations = [locations[index] for index in source_indexes]
+            uuid_lookup = _build_uuid_lookup(depot_id, solver_locations, location_dicts)
             try:
                 session_id, trip_type = SessionId(job.session_id), TripType(job.trip_type.upper())
             except (TypeError, ValueError) as exc:
@@ -202,7 +238,14 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                 solved_routes = VRPTWSolverService().solve(
                     depot={"id": "depot", "name": depot.name, "latitude": depot.latitude, "longitude": depot.longitude},
                     locations=location_dicts,
-                    vehicles=[{"id": str(vehicle.id), "capacity": vehicle.capacity, "license_plate": vehicle.license_plate} for vehicle in vehicles],
+                    vehicles=[
+                        {
+                            "id": str(vehicle.id),
+                            "capacity": capacity,
+                            "license_plate": vehicle.license_plate,
+                        }
+                        for vehicle, capacity in zip(vehicles, vehicle_capacities)
+                    ],
                     session_id=session_id, trip_type=trip_type,
                 )
             except Exception as exc:
@@ -212,11 +255,11 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
             if not solved_routes:
                 raise RouteStopValidationError(job_id_str, "Solver found no feasible route.")
 
-            # Thẩm định dữ liệu đầu ra từ Solver (<=45 khách, không lặp, <=90 phút)
+            # Validate solver output against the configured passenger cap.
             try:
                 RouteValidator.validate_solver_routes(
                     routes=solved_routes,
-                    max_capacity=45,
+                    max_capacity=routing_config.MAX_PASSENGERS_PER_VEHICLE,
                     max_duration_minutes=90.0,
                 )
             except RouteValidationError as exc:
@@ -224,6 +267,7 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
 
             created_routes: List[Tuple[Route, List[RouteStop], List[Ticket]]] = []
             assigned_ids: set[str] = set()
+            assigned_ticket_counts: Dict[str, int] = {}
             for route_info in solved_routes:
                 vehicle_id = route_info.get("vehicle_id")
                 try:
@@ -271,8 +315,19 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                     db.add(route_stop)
                     route_stops.append(route_stop)
                     if node_key not in {"depot", "SCHOOL"}:
-                        matching_tickets = tickets_by_location.get(str(location_id), [])
-                        for t in matching_tickets:
+                        location_key = str(location_id)
+                        matching_tickets = tickets_by_location.get(location_key, [])
+                        already_assigned = assigned_ticket_counts.get(location_key, 0)
+                        stop_demand = int(stop_data.get("demand", len(matching_tickets) - already_assigned))
+                        stop_tickets = matching_tickets[already_assigned:already_assigned + stop_demand]
+                        if len(stop_tickets) != stop_demand:
+                            raise RouteStopValidationError(
+                                job_id_str,
+                                f"Solver phân {stop_demand} vé cho trạm {location_key} nhưng chỉ còn {len(stop_tickets)} vé.",
+                                "DEMAND_MISMATCH",
+                            )
+                        assigned_ticket_counts[location_key] = already_assigned + len(stop_tickets)
+                        for t in stop_tickets:
                             if str(t.id) in assigned_ids:
                                 raise RouteStopValidationError(job_id_str, f"Ticket {t.id} assigned multiple times.")
                             t.route = route
@@ -281,7 +336,7 @@ def run_route_job_worker(db: Session, job_id: uuid.UUID) -> RouteJob:
                             assigned_ids.add(str(t.id))
                 created_routes.append((route, route_stops, route_tickets))
 
-            # Step 6: Refund any tickets that could not be assigned to a route
+            # Step 6: Refund any tickets that could not be assigned to a route.
             from app.services.wallet_service import refund_ticket
             unassigned_tickets = [t for t in tickets if str(t.id) not in assigned_ids]
             for unassigned_t in unassigned_tickets:

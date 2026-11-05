@@ -342,7 +342,7 @@ th, td {
   color: #fff;
 }
 
-/* Leaflet Realtime Map Styling */
+/* Goong route map */
 .map-container {
   height: 520px;
   width: 100%;
@@ -350,6 +350,18 @@ th, td {
   overflow: hidden;
   border: 1px solid #dce5e7;
   z-index: 1;
+}
+
+.map-error {
+  position: absolute;
+  z-index: 10;
+  inset: 12px 12px auto;
+  padding: 12px 14px;
+  border: 1px solid #f1c7c3;
+  border-radius: 8px;
+  background: #fff7f6;
+  color: #a52d24;
+  font-size: 13px;
 }
 
 .bus-popup {

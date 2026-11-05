@@ -43,7 +43,6 @@ class _DriverMapTabState extends State<DriverMapTab>
   List<_Stop> _stops = [];
   List<LatLng> _roadPolylinePoints = [];
   bool _loading = true, _busy = false;
-  DateTime _selectedDate = DateTime.now();
   _Stop? _selectedStopForTooltip;
   String? _error;
   Timer? _pendingRouteTimer;
@@ -65,7 +64,14 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   List<_Stop> get _effectiveStops => _stops;
 
-  ml.LatLng _mapPoint(LatLng point) => ml.LatLng(point.latitude, point.longitude);
+  String get _serviceDateLabel {
+    final date = DateTime.tryParse(_route?['service_date']?.toString() ?? '');
+    if (date == null) return 'Ngày chạy chưa xác định';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  ml.LatLng _mapPoint(LatLng point) =>
+      ml.LatLng(point.latitude, point.longitude);
 
   void _moveMapTo(LatLng center, double zoom) {
     _goongMapController?.animateCamera(
@@ -74,13 +80,6 @@ class _DriverMapTabState extends State<DriverMapTab>
         zoom,
       ),
     );
-  }
-
-  List<LatLng> get _effectivePolylinePoints {
-    if (_roadPolylinePoints.isEmpty) {
-      return _effectiveStops.map((s) => s.point).toList();
-    }
-    return _roadPolylinePoints;
   }
 
   void _onPanelExtentChanged() {
@@ -109,7 +108,9 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   Future<void> _updateGpsAnnotation(Position position) async {
     final controller = _goongMapController;
-    if (!_mapStyleLoaded || controller == null) return;
+    if (!_mapStyleLoaded || controller == null || _status != 'in_progress') {
+      return;
+    }
     if (_renderingMapAnnotations) {
       _rerenderMapAnnotationsRequested = true;
       return;
@@ -152,24 +153,20 @@ class _DriverMapTabState extends State<DriverMapTab>
       await controller.clearCircles();
       _gpsCircle = null;
 
-      final points = _effectivePolylinePoints;
-      if (points.length > 1) {
-        await controller.addLine(
-          ml.LineOptions(
-            geometry: points.map(_mapPoint).toList(),
-            lineColor: '#FFFFFF',
-            lineWidth: 7,
-            lineJoin: 'round',
-          ),
-        );
-        await controller.addLine(
-          ml.LineOptions(
-            geometry: points.map(_mapPoint).toList(),
-            lineColor: '#EA4335',
-            lineWidth: 4.5,
-            lineJoin: 'round',
-          ),
-        );
+      if (_roadPolylinePoints.length > 1) {
+        final geometry = _roadPolylinePoints.map(_mapPoint).toList();
+        await controller.addLine(ml.LineOptions(
+          geometry: geometry,
+          lineColor: '#FFFFFF',
+          lineWidth: 7,
+          lineJoin: 'round',
+        ));
+        await controller.addLine(ml.LineOptions(
+          geometry: geometry,
+          lineColor: '#EA4335',
+          lineWidth: 4.5,
+          lineJoin: 'round',
+        ));
       }
 
       for (var i = 0; i < _effectiveStops.length; i++) {
@@ -189,7 +186,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       }
 
       final position = _currentPosition;
-      if (position != null) {
+      if (position != null && _status == 'in_progress') {
         _gpsCircle = await controller.addCircle(
           ml.CircleOptions(
             geometry: ml.LatLng(position.latitude, position.longitude),
@@ -253,8 +250,10 @@ class _DriverMapTabState extends State<DriverMapTab>
   @override
   void didUpdateWidget(covariant DriverMapTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialRoute != oldWidget.initialRoute && widget.initialRoute != null) {
+    if (widget.initialRoute != oldWidget.initialRoute &&
+        widget.initialRoute != null) {
       _route = widget.initialRoute;
+      _roadPolylinePoints = [];
       _load();
     }
   }
@@ -274,66 +273,91 @@ class _DriverMapTabState extends State<DriverMapTab>
     final rawStopsList = (route['stops'] as List<dynamic>? ??
         route['route_stops'] as List<dynamic>? ??
         []);
-    final stops = rawStopsList.map((raw) {
-      final item = Map<String, dynamic>.from(raw as Map);
-      final loc = Map<String, dynamic>.from(item['location'] as Map? ??
-          item['locations'] as Map? ??
-          item);
-      final name = loc['name']?.toString() ??
-          item['name']?.toString() ??
-          'Trạm ${item['stop_order'] ?? ''}';
-      final lat = (loc['latitude'] as num?)?.toDouble() ??
-          (item['latitude'] as num?)?.toDouble();
-      final lng = (loc['longitude'] as num?)?.toDouble() ??
-          (item['longitude'] as num?)?.toDouble();
-      if (lat == null || lng == null) return null;
-      final date = DateTime.tryParse(item['arrival_time']?.toString() ?? '')
-          ?.toLocal();
-      final departure = DateTime.tryParse(item['departure_time']?.toString() ?? '')?.toLocal();
-      final windowStart = DateTime.tryParse(item['time_window_start']?.toString() ?? '')?.toLocal();
-      final windowEnd = DateTime.tryParse(item['time_window_end']?.toString() ?? '')?.toLocal();
-      return _Stop(
-        name,
-        LatLng(lat, lng),
-        date == null
-            ? 'Đang cập nhật'
-            : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
-        (item['stop_order'] as num?)?.toInt() ?? 0,
-        departure == null ? null : '${departure.hour.toString().padLeft(2, '0')}:${departure.minute.toString().padLeft(2, '0')}',
-        windowStart == null || windowEnd == null ? null : '${windowStart.hour.toString().padLeft(2, '0')}:${windowStart.minute.toString().padLeft(2, '0')}–${windowEnd.hour.toString().padLeft(2, '0')}:${windowEnd.minute.toString().padLeft(2, '0')}',
-      );
-    }).whereType<_Stop>().toList()
+    final stops = rawStopsList
+        .map((raw) {
+          final item = Map<String, dynamic>.from(raw as Map);
+          final loc = Map<String, dynamic>.from(
+              item['location'] as Map? ?? item['locations'] as Map? ?? item);
+          final name = loc['name']?.toString() ??
+              item['name']?.toString() ??
+              'Trạm ${item['stop_order'] ?? ''}';
+          final lat = (loc['latitude'] as num?)?.toDouble() ??
+              (item['latitude'] as num?)?.toDouble();
+          final lng = (loc['longitude'] as num?)?.toDouble() ??
+              (item['longitude'] as num?)?.toDouble();
+          if (lat == null ||
+              lng == null ||
+              !lat.isFinite ||
+              !lng.isFinite ||
+              lat < -90 ||
+              lat > 90 ||
+              lng < -180 ||
+              lng > 180) {
+            return null;
+          }
+          final date = DateTime.tryParse(item['arrival_time']?.toString() ?? '')
+              ?.toLocal();
+          final departure =
+              DateTime.tryParse(item['departure_time']?.toString() ?? '')
+                  ?.toLocal();
+          final windowStart =
+              DateTime.tryParse(item['time_window_start']?.toString() ?? '')
+                  ?.toLocal();
+          final windowEnd =
+              DateTime.tryParse(item['time_window_end']?.toString() ?? '')
+                  ?.toLocal();
+          return _Stop(
+            name,
+            LatLng(lat, lng),
+            date == null
+                ? 'Đang cập nhật'
+                : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
+            (item['stop_order'] as num?)?.toInt() ?? 0,
+            departure == null
+                ? null
+                : '${departure.hour.toString().padLeft(2, '0')}:${departure.minute.toString().padLeft(2, '0')}',
+            windowStart == null || windowEnd == null
+                ? null
+                : '${windowStart.hour.toString().padLeft(2, '0')}:${windowStart.minute.toString().padLeft(2, '0')}–${windowEnd.hour.toString().padLeft(2, '0')}:${windowEnd.minute.toString().padLeft(2, '0')}',
+          );
+        })
+        .whereType<_Stop>()
+        .toList()
       ..sort((a, b) => a.order.compareTo(b.order));
     return stops;
   }
 
   Future<void> _fetchRoadPolyline(List<_Stop> stops) async {
     if (stops.length < 2) return;
-    try {
-      final waypoints = stops.map((s) => s.point).toList();
-      final roadPoints = await RoutingService().getDrivingRoute(waypoints);
-      if (mounted && roadPoints.isNotEmpty) {
-        setState(() {
-          _roadPolylinePoints = roadPoints;
-        });
-        _renderMapAnnotations();
-      }
-    } catch (_) {}
+    final routeId = _id;
+    final points = await RoutingService().getDrivingRoute(
+      stops.map((stop) => stop.point).toList(),
+    );
+    if (!mounted || routeId != _id) return;
+    setState(() => _roadPolylinePoints = points);
+    _renderMapAnnotations();
   }
 
   Future<void> _load() async {
-    if (mounted) setState(() { _loading = true; _error = null; });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    String? loadError;
 
     if (_route != null) {
       final initialStops = _parseStops(_route!);
       if (initialStops.isNotEmpty && mounted) {
         setState(() {
+          _roadPolylinePoints = [];
           _stops = initialStops;
           _loading = false;
         });
         _moveMapTo(_center, 13.5);
-        _fetchRoadPolyline(initialStops);
         _renderMapAnnotations();
+        _fetchRoadPolyline(initialStops);
       }
     }
 
@@ -343,6 +367,7 @@ class _DriverMapTabState extends State<DriverMapTab>
         final driverId = widget.user?['id']?.toString() ?? '';
         final routes = await widget.api.fetchDriverRoutes(driverId);
         if (routes.isNotEmpty) {
+          _roadPolylinePoints = [];
           _route = Map<String, dynamic>.from(routes.first as Map);
           routeId = _id;
           final stops = _parseStops(_route!);
@@ -352,18 +377,22 @@ class _DriverMapTabState extends State<DriverMapTab>
               _loading = false;
             });
             _moveMapTo(_center, 13.5);
-            _fetchRoadPolyline(stops);
             _renderMapAnnotations();
+            _fetchRoadPolyline(stops);
           }
         }
-      } catch (_) {}
+      } catch (error) {
+        loadError = error.toString();
+      }
     }
 
     if (routeId == null || routeId.isEmpty) {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'Chưa có tuyến được phân công.';
+          _error = loadError == null
+              ? 'Chưa có chuyến nào được phân công cho bạn.'
+              : 'Không tải được danh sách chuyến: $loadError';
         });
       }
       return;
@@ -374,6 +403,7 @@ class _DriverMapTabState extends State<DriverMapTab>
       final stops = _parseStops(route);
       if (mounted) {
         setState(() {
+          if (_id != route['id']?.toString()) _roadPolylinePoints = [];
           _route = route;
           _stops = stops.isNotEmpty ? stops : _stops;
           _error = null;
@@ -381,8 +411,8 @@ class _DriverMapTabState extends State<DriverMapTab>
         });
         if (_stops.isNotEmpty) {
           _moveMapTo(_center, 13.5);
-          _fetchRoadPolyline(_stops);
           _renderMapAnnotations();
+          _fetchRoadPolyline(_stops);
         }
       }
     } catch (e) {
@@ -396,7 +426,9 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   Future<void> _confirmToggle() async {
     final routeId = _id;
-    if (routeId == null || routeId.isEmpty || _status == 'completed' || _busy) return;
+    if (routeId == null || routeId.isEmpty || _status == 'completed' || _busy) {
+      return;
+    }
     final isStarting = _status != 'in_progress';
     final actionText = isStarting ? 'bắt đầu' : 'kết thúc';
     final confirm = await showDialog<bool>(
@@ -406,7 +438,9 @@ class _DriverMapTabState extends State<DriverMapTab>
         title: Row(
           children: [
             Icon(
-              isStarting ? Icons.play_circle_fill_rounded : Icons.stop_circle_rounded,
+              isStarting
+                  ? Icons.play_circle_fill_rounded
+                  : Icons.stop_circle_rounded,
               color: isStarting ? AppColors.teal : const Color(0xFFD94E41),
             ),
             const SizedBox(width: 8),
@@ -425,13 +459,16 @@ class _DriverMapTabState extends State<DriverMapTab>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: isStarting ? AppColors.teal : const Color(0xFFD94E41),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              backgroundColor:
+                  isStarting ? AppColors.teal : const Color(0xFFD94E41),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               isStarting ? 'Bắt đầu ngay' : 'Xác nhận kết thúc',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -448,6 +485,7 @@ class _DriverMapTabState extends State<DriverMapTab>
     if (routeId == null || routeId.isEmpty || _status == 'completed') return;
     setState(() => _busy = true);
     final wasInProgress = _status == 'in_progress';
+    var trackingStarted = true;
     try {
       final updatedRoute = wasInProgress
           ? await widget.api.endRoute(routeId)
@@ -455,7 +493,8 @@ class _DriverMapTabState extends State<DriverMapTab>
       if (wasInProgress) {
         GpsService().stopTracking();
       } else {
-        GpsService().startTracking(routeId: routeId, api: widget.api);
+        trackingStarted =
+            await GpsService().startTracking(routeId: routeId, api: widget.api);
       }
       if (mounted) {
         setState(() {
@@ -467,9 +506,15 @@ class _DriverMapTabState extends State<DriverMapTab>
             content: Text(
               wasInProgress
                   ? 'Đã kết thúc chuyến xe $_routeCode.'
-                  : 'Đã bắt đầu chuyến xe $_routeCode. Chúc bạn lái xe an toàn!',
+                  : trackingStarted
+                      ? 'Đã bắt đầu chuyến xe $_routeCode. Vị trí xe đang được cập nhật.'
+                      : 'Đã bắt đầu chuyến xe $_routeCode nhưng chưa gửi được GPS. Hãy bật định vị và cấp quyền vị trí.',
             ),
-            backgroundColor: wasInProgress ? const Color(0xFFD94E41) : AppColors.teal,
+            backgroundColor: wasInProgress
+                ? const Color(0xFFD94E41)
+                : trackingStarted
+                    ? AppColors.teal
+                    : Colors.orange[800],
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -493,61 +538,53 @@ class _DriverMapTabState extends State<DriverMapTab>
   Widget build(BuildContext context) {
     return Scaffold(
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.teal))
-          : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.route_outlined, size: 52, color: AppColors.teal),
-                      const SizedBox(height: 12),
-                      Text(_error!),
-                      TextButton(onPressed: _load, child: const Text('Tải lại')),
-                    ],
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.teal))
+          : Stack(
+              children: [
+                // Basemap and route annotations share the MapLibre camera.
+                ml.MapLibreMap(
+                  styleString: ApiConfig.goongMapStyleUrl,
+                  initialCameraPosition: ml.CameraPosition(
+                    target: ml.LatLng(_center.latitude, _center.longitude),
+                    zoom: 13.5,
                   ),
-                )
-              : Stack(
-                  children: [
-                    // Basemap and route annotations share the MapLibre camera.
-                    ml.MapLibreMap(
-                      styleString: ApiConfig.goongMapStyleUrl,
-                      initialCameraPosition: ml.CameraPosition(
-                        target: ml.LatLng(_center.latitude, _center.longitude),
-                        zoom: 13.5,
-                      ),
-                      attributionButtonPosition: ml.AttributionButtonPosition.topLeft,
-                      attributionButtonMargins: const Point(8, 58),
-                      onMapCreated: (controller) {
-                        _goongMapController = controller;
-                        controller.onCircleTapped.add(_onMapCircleTapped);
-                      },
-                      onStyleLoadedCallback: () {
-                        _mapStyleLoaded = true;
-                        _renderMapAnnotations();
-                      },
-                    ),
-
-                    // Layer 2: Floating Controls
-                    SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Row(
-                          children: [
-                            _circle(Icons.arrow_back, () => Navigator.maybePop(context)),
-                            const Spacer(),
-                            _circle(Icons.my_location_rounded, () => _moveMapTo(_center, 14)),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    // Layer 3: Tooltip Banner for selected stop
-                    if (_selectedStopForTooltip != null) _buildStopTooltipBanner(),
-
-                    // Layer 4: Draggable Bottom Panel matching Student UI
-                    _panel(),
-                  ],
+                  attributionButtonPosition:
+                      ml.AttributionButtonPosition.topLeft,
+                  attributionButtonMargins: const Point(8, 58),
+                  onMapCreated: (controller) {
+                    _goongMapController = controller;
+                    controller.onCircleTapped.add(_onMapCircleTapped);
+                  },
+                  onStyleLoadedCallback: () {
+                    _mapStyleLoaded = true;
+                    _renderMapAnnotations();
+                  },
                 ),
+
+                // Layer 2: Floating Controls
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        _circle(Icons.arrow_back,
+                            () => Navigator.maybePop(context)),
+                        const Spacer(),
+                        _circle(Icons.my_location_rounded,
+                            () => _moveMapTo(_center, 14)),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Layer 3: Tooltip Banner for selected stop
+                if (_selectedStopForTooltip != null) _buildStopTooltipBanner(),
+
+                // Layer 4: Draggable Bottom Panel matching Student UI
+                _panel(),
+              ],
+            ),
     );
   }
 
@@ -570,15 +607,29 @@ class _DriverMapTabState extends State<DriverMapTab>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(stop.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(stop.name,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('Giờ đón dự kiến: ${stop.time}', style: const TextStyle(fontSize: 14, color: AppColors.teal)),
-                  if (stop.timeWindow != null) Text('Khung đón: ${stop.timeWindow}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                  if (stop.departureTime != null) Text('Đón xong / rời trạm: ${stop.departureTime}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text('Giờ đón dự kiến: ${stop.time}',
+                      style:
+                          const TextStyle(fontSize: 14, color: AppColors.teal)),
+                  if (stop.timeWindow != null)
+                    Text('Khung đón: ${stop.timeWindow}',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textSecondary)),
+                  if (stop.departureTime != null)
+                    Text('Đón xong / rời trạm: ${stop.departureTime}',
+                        style: const TextStyle(
+                            fontSize: 13, color: AppColors.textSecondary)),
                   const SizedBox(height: 12),
-                  const Text('Tọa độ:', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                  Text('${stop.point.latitude.toStringAsFixed(5)}, ${stop.point.longitude.toStringAsFixed(5)}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                  const Text('Tọa độ:',
+                      style:
+                          TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  Text(
+                      '${stop.point.latitude.toStringAsFixed(5)}, ${stop.point.longitude.toStringAsFixed(5)}',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w500)),
                 ],
               ),
             ),
@@ -604,17 +655,23 @@ class _DriverMapTabState extends State<DriverMapTab>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('Xem thông tin trạm', style: TextStyle(fontSize: 11, color: AppColors.textMuted)),
+                    const Text('Xem thông tin trạm',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.textMuted)),
                     Text(
                       stop.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppColors.textMuted),
             ],
           ),
         ),
@@ -667,7 +724,9 @@ class _DriverMapTabState extends State<DriverMapTab>
                               ),
                               const SizedBox(width: 10),
                               Text(
-                                'Route $_routeCode',
+                                _route == null
+                                    ? 'Chưa có chuyến'
+                                    : 'Tuyến $_routeCode',
                                 style: const TextStyle(
                                   color: Color(0xFF07835A),
                                   fontWeight: FontWeight.w700,
@@ -675,7 +734,8 @@ class _DriverMapTabState extends State<DriverMapTab>
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              const Icon(Icons.keyboard_arrow_up_rounded, size: 20),
+                              const Icon(Icons.keyboard_arrow_up_rounded,
+                                  size: 20),
                             ],
                           ),
                         ),
@@ -687,113 +747,186 @@ class _DriverMapTabState extends State<DriverMapTab>
                   controller: scroll,
                   padding: const EdgeInsets.only(bottom: 24),
                   children: [
-              // Drag Handle
-              Center(
-                child: InkWell(
-                  onTap: _togglePanel,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Container(
-                      height: 4,
-                      width: 40,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFD4C9),
-                        borderRadius: BorderRadius.circular(3),
+                    // Drag Handle
+                    Center(
+                      child: InkWell(
+                        onTap: _togglePanel,
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Container(
+                            height: 4,
+                            width: 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFD4C9),
+                              borderRadius: BorderRadius.circular(3),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ),
 
-              // Header Route Card (Mã + Tiêu đề + Status Chip + Nút Đổi chiều)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE7F5EF),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          _routeCode,
-                          style: const TextStyle(
-                            color: Color(0xFF07835A),
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                        ),
+                    if (_route == null)
+                      _emptyRouteView()
+                    else ...[
+                      _routeSummaryCard(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                        child: _button(),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _displayTitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                            ),
-                          ],
-                        ),
+                      TabBar(
+                        controller: _tabs,
+                        labelColor: const Color(0xFFEA4335),
+                        unselectedLabelColor: const Color(0xFF343A40),
+                        indicatorColor: const Color(0xFFEA4335),
+                        indicatorWeight: 3,
+                        labelStyle: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
+                        unselectedLabelStyle: const TextStyle(
+                            fontWeight: FontWeight.w500, fontSize: 14),
+                        tabs: const [
+                          Tab(text: 'Danh sách trạm'),
+                          Tab(text: 'Biểu đồ giờ'),
+                          Tab(text: 'Thông tin'),
+                        ],
                       ),
-                      const SizedBox(width: 6),
-                      _chip(),
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE6F4EA),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: const Color(0xFF34A853).withValues(alpha: 0.3)),
-                        ),
-                        child: Text(
-                          _routeDirection.isEmpty ? '—' : _routeDirection,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF137333),
-                          ),
-                        ),
-                      ),
+                      const Divider(height: 1, color: AppColors.border),
+                      const SizedBox(height: 12),
+                      if (_tabs.index == 0) _stopsView(),
+                      if (_tabs.index == 1) _hoursView(),
+                      if (_tabs.index == 2) _infoView(),
                     ],
-                  ),
-                ),
-              ),
-
-              // TabBar Navigation (Danh sách trạm | Biểu đồ giờ | Thông tin)
-              TabBar(
-                controller: _tabs,
-                labelColor: const Color(0xFFEA4335),
-                unselectedLabelColor: const Color(0xFF343A40),
-                indicatorColor: const Color(0xFFEA4335),
-                indicatorWeight: 3,
-                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-                tabs: const [
-                  Tab(text: 'Danh sách trạm'),
-                  Tab(text: 'Biểu đồ giờ'),
-                  Tab(text: 'Thông tin'),
-                ],
-              ),
-              const Divider(height: 1, color: AppColors.border),
-              const SizedBox(height: 12),
-
-              // Tab Views
-              if (_tabs.index == 0) _stopsView(),
-              if (_tabs.index == 1) _hoursView(),
-              if (_tabs.index == 2) _infoView(),
                   ],
                 ),
+        ),
+      );
+
+  Widget _emptyRouteView() {
+    final hasLoadError = _error?.startsWith('Không tải được') ?? false;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 24),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4F8F8),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          children: [
+            Icon(hasLoadError ? Icons.cloud_off_outlined : Icons.route_outlined,
+                size: 42, color: AppColors.teal),
+            const SizedBox(height: 10),
+            Text(
+              hasLoadError
+                  ? 'Chưa tải được chuyến xe'
+                  : 'Bạn chưa được phân công chuyến',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              hasLoadError
+                  ? _error!
+                  : 'Các chuyến được giao sẽ xuất hiện tại đây cùng lộ trình và giờ đón.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loading ? null : _load,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Tải lại danh sách'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _routeSummaryCard() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE7F5EF),
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Text(_routeCode,
+                        style: const TextStyle(
+                            color: Color(0xFF07835A),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _displayTitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _chip(),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _summaryTag(
+                      Icons.swap_horiz_rounded,
+                      _routeDirection.isEmpty
+                          ? 'Chưa rõ chiều chạy'
+                          : _routeDirection),
+                  _summaryTag(Icons.calendar_today_rounded, _serviceDateLabel),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _summaryTag(IconData icon, String text) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE6F4EA),
+          borderRadius: BorderRadius.circular(18),
+          border:
+              Border.all(color: const Color(0xFF34A853).withValues(alpha: .25)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: const Color(0xFF137333)),
+            const SizedBox(width: 5),
+            Text(text,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF137333))),
+          ],
         ),
       );
 
@@ -831,7 +964,8 @@ class _DriverMapTabState extends State<DriverMapTab>
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(fontSize: 10, color: fg, fontWeight: FontWeight.w700),
+            style:
+                TextStyle(fontSize: 10, color: fg, fontWeight: FontWeight.w700),
           ),
         ],
       ),
@@ -855,9 +989,9 @@ class _DriverMapTabState extends State<DriverMapTab>
             ),
           ),
           const SizedBox(height: 12),
-          for (var i = 0; i < stops.length; i++) _stopLine(stops[i], i == stops.length - 1),
-          const SizedBox(height: 16),
-          _button(),
+          for (var i = 0; i < stops.length; i++)
+            _stopLine(stops[i], i == stops.length - 1),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -885,7 +1019,9 @@ class _DriverMapTabState extends State<DriverMapTab>
                   height: 12,
                   margin: const EdgeInsets.only(top: 4),
                   decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFFEA4335) : const Color(0xFF5F6368),
+                    color: isSelected
+                        ? const Color(0xFFEA4335)
+                        : const Color(0xFF5F6368),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -909,14 +1045,18 @@ class _DriverMapTabState extends State<DriverMapTab>
                       s.name,
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                        color: isSelected ? const Color(0xFFEA4335) : AppColors.textPrimary,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.w500,
+                        color: isSelected
+                            ? const Color(0xFFEA4335)
+                            : AppColors.textPrimary,
                       ),
                     ),
                   ),
                   Text(
                     s.time,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF75828B)),
+                    style:
+                        const TextStyle(fontSize: 12, color: Color(0xFF75828B)),
                   ),
                 ],
               ),
@@ -929,113 +1069,143 @@ class _DriverMapTabState extends State<DriverMapTab>
 
   // ─── TAB 2: BIỂU ĐỒ GIỜ ─────────────────────────────────────
   Widget _hoursView() {
-    final dateStr = _isSameDay(_selectedDate, DateTime.now())
-        ? 'Hôm nay'
-        : 'Ngày ${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}';
+    final departureTime = _clockLabel(_route?['departure_time']);
+    final schoolArrivalTime =
+        _clockLabel(_route?['estimated_school_arrival_time']);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Date Selector Bar
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: const Color(0xFFF1F3F4),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _selectedDate = _selectedDate.subtract(const Duration(days: 1));
-                    });
-                  },
-                  icon: const Icon(Icons.chevron_left_rounded, color: AppColors.textPrimary),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
+                Text('Lịch trình • $_serviceDateLabel',
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
                 Text(
-                  dateStr,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _selectedDate = _selectedDate.add(const Duration(days: 1));
-                    });
-                  },
-                  icon: const Icon(Icons.chevron_right_rounded, color: AppColors.textPrimary),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
+                    'Chiều: ${_routeDirection.isEmpty ? '—' : _routeDirection}',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(height: 4),
+                Text(
+                    'Khởi hành $departureTime  •  Về trường $schoolArrivalTime',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
               ],
             ),
           ),
           const SizedBox(height: 16),
-          Text(
-            _routeDirection.isEmpty ? 'Chưa có lịch chạy' : _routeDirection,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.teal),
-          ),
-          const SizedBox(height: 16),
-
+          const Text('Các điểm dừng',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 8),
           if (_effectiveStops.isEmpty)
-            const Text('Chưa có dữ liệu điểm dừng của tuyến.')
+            const Text(
+                'Chuyến đã được phân công nhưng chưa có dữ liệu điểm dừng.')
           else
             ..._effectiveStops.map((stop) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: Text(stop.name)),
+                      const Padding(
+                          padding: EdgeInsets.only(top: 3),
+                          child: Icon(Icons.schedule_rounded,
+                              size: 16, color: AppColors.teal)),
+                      const SizedBox(width: 9),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(stop.name,
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w600)),
+                            if (stop.timeWindow != null)
+                              Text('Khung đón ${stop.timeWindow}',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(stop.time, style: const TextStyle(color: AppColors.teal)),
-                          if (stop.timeWindow != null) Text('TW ${stop.timeWindow}', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                          Text(stop.time,
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.teal,
+                                  fontWeight: FontWeight.w700)),
+                          if (stop.departureTime != null)
+                            Text('Rời ${stop.departureTime}',
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.textSecondary)),
                         ],
                       ),
                     ],
                   ),
                 )),
-
-          const SizedBox(height: 24),
-          _button(),
         ],
       ),
     );
   }
 
-  bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  String _clockLabel(dynamic value) {
+    if (value == null || value.toString().isEmpty) return '—';
+    final parsed = DateTime.tryParse(value.toString());
+    if (parsed == null) return value.toString();
+    final local = parsed.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
 
   // ─── TAB 3: THÔNG TIN ────────────────────────────────────────
   Widget _infoView() {
     final totalStops = _effectiveStops.length;
-    final distanceKm = (_route?['total_distance'] as num?)?.toStringAsFixed(1) ?? '—';
-    final drivingMinutes = (_route?['driving_duration_minutes'] as num?)?.toStringAsFixed(1) ?? '—';
+    final distanceKm =
+        (_route?['total_distance'] as num?)?.toStringAsFixed(1) ?? '—';
+    final drivingMinutes =
+        (_route?['driving_duration_minutes'] as num?)?.toStringAsFixed(1) ??
+            '—';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _line('Depot', 'Đại Học Cần Thơ'),
+          _line('Ngày chạy', _serviceDateLabel),
+          _line('Ca và chiều', _routeDirection.isEmpty ? '—' : _routeDirection),
+          _line('Phương tiện', _vehicleLabel),
+          _line('Số hành khách', '${_route?['passenger_count'] ?? '—'}'),
           _line('Giá vé', '7000Đ'),
           _line('Quãng đường chạy toàn tuyến', '$distanceKm km'),
-          _line('Thời gian xe di chuyển (không gồm chờ)', '$drivingMinutes phút'),
+          _line(
+              'Thời gian xe di chuyển (không gồm chờ)', '$drivingMinutes phút'),
           _line('Tổng số trạm của tuyến đang chạy', '$totalStops trạm'),
           _line('Hotlines', '0919 243 170'),
-          const SizedBox(height: 16),
-          _button(),
+          const SizedBox(height: 8),
         ],
       ),
     );
+  }
+
+  String get _vehicleLabel {
+    final vehicle = _route?['vehicle'];
+    if (vehicle is! Map) return 'Chưa cập nhật';
+    final plate = vehicle['license_plate']?.toString();
+    return plate == null || plate.isEmpty ? 'Đã phân công' : plate;
   }
 
   Widget _line(String key, String value) => Padding(
@@ -1044,8 +1214,12 @@ class _DriverMapTabState extends State<DriverMapTab>
           text: TextSpan(
             style: const TextStyle(fontSize: 13, color: Color(0xFF273130)),
             children: [
-              TextSpan(text: '$key: ', style: const TextStyle(fontWeight: FontWeight.bold)),
-              TextSpan(text: value, style: const TextStyle(color: Color(0xFF75828B))),
+              TextSpan(
+                  text: '$key: ',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              TextSpan(
+                  text: value,
+                  style: const TextStyle(color: Color(0xFF75828B))),
             ],
           ),
         ),
@@ -1060,11 +1234,13 @@ class _DriverMapTabState extends State<DriverMapTab>
         width: double.infinity,
         child: OutlinedButton.icon(
           onPressed: null,
-          icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.grey),
+          icon: const Icon(Icons.check_circle_outline_rounded,
+              color: Colors.grey),
           label: const Text('Chuyến xe đã hoàn tất'),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         ),
       );
@@ -1075,17 +1251,21 @@ class _DriverMapTabState extends State<DriverMapTab>
       child: FilledButton.icon(
         onPressed: _busy ? null : _confirmToggle,
         style: FilledButton.styleFrom(
-          backgroundColor: isInProgress ? const Color(0xFFD94E41) : AppColors.teal,
+          backgroundColor:
+              isInProgress ? const Color(0xFFD94E41) : AppColors.teal,
           padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         icon: _busy
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
               )
-            : Icon(isInProgress ? Icons.stop_rounded : Icons.play_arrow_rounded),
+            : Icon(
+                isInProgress ? Icons.stop_rounded : Icons.play_arrow_rounded),
         label: Text(
           _busy
               ? 'Đang xử lý...'
@@ -1100,7 +1280,8 @@ class _DriverMapTabState extends State<DriverMapTab>
 }
 
 class _Stop {
-  const _Stop(this.name, this.point, this.time, this.order, this.departureTime, this.timeWindow);
+  const _Stop(this.name, this.point, this.time, this.order, this.departureTime,
+      this.timeWindow);
   final String name, time;
   final String? departureTime, timeWindow;
   final LatLng point;

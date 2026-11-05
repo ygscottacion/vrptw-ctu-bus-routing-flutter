@@ -634,6 +634,22 @@ def approve_route(
     route.approved_by = current_admin.id
     route.approved_at = datetime.datetime.now(VN_TZ)
     route.rejection_reason = None
+    assigned_tickets = (
+        db.query(Ticket)
+        .filter(Ticket.route_id == route.id, Ticket.status == TicketStatus.ASSIGNED)
+        .all()
+    )
+    from app.services.notification_service import add_notification
+    route_label = f"{route.service_date.strftime('%d/%m/%Y')} • {route.session_id}"
+    for ticket in assigned_tickets:
+        add_notification(
+            db,
+            user_id=ticket.user_id,
+            event_key=f"route_approved:{route.id}",
+            type="trip",
+            title="Chuyến đi đã được xác nhận",
+            body=f"Chuyến ngày {route_label} đã được admin xác nhận. Hãy xem chi tiết trong Vé của tôi.",
+        )
     db.commit()
 
     return (

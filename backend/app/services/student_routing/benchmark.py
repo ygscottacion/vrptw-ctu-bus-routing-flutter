@@ -144,10 +144,6 @@ class StudentRoutingBenchmark:
         imp_best_pct = ((baseline_obj - best_obj) / baseline_obj) * 100.0 if baseline_obj > 0 else 0.0
         imp_avg_pct = ((baseline_obj - avg_obj) / baseline_obj) * 100.0 if baseline_obj > 0 else 0.0
 
-        cost_per_km = 1.5  # Estimated operating cost $1.5/km
-        sweep_cost = round(sweep_eval.total_distance * cost_per_km, 2)
-        tabu_cost = round(best_tabu_eval.total_distance * cost_per_km, 2)
-
         result_payload = {
             "dataset_name": name,
             "num_vehicles": num_vehicles,
@@ -163,7 +159,6 @@ class StudentRoutingBenchmark:
                 "capacity_violations": sweep_eval.capacity_violations,
                 "ride_time_violations": sweep_eval.ride_time_violations,
                 "objective_value": sweep_eval.objective_value,
-                "estimated_cost_usd": sweep_cost,
                 "runtime_ms": round(t_sweep_ms, 2)
             },
             "tabu_optimized": {
@@ -176,7 +171,6 @@ class StudentRoutingBenchmark:
                 "capacity_violations": best_tabu_eval.capacity_violations,
                 "ride_time_violations": best_tabu_eval.ride_time_violations,
                 "objective_value": best_tabu_eval.objective_value,
-                "estimated_cost_usd": tabu_cost,
                 "runtime_ms": round(statistics.mean(tabu_runtimes_ms), 2),
                 "avg_objective": round(avg_obj, 2),
                 "std_dev_objective": round(std_obj, 2)
@@ -186,7 +180,6 @@ class StudentRoutingBenchmark:
                 "distance_reduction_pct": round(((sweep_eval.total_distance - best_tabu_eval.total_distance) / sweep_eval.total_distance) * 100.0, 2) if sweep_eval.total_distance > 0 else 0.0,
                 "time_saved_min": round(sweep_eval.total_travel_time - best_tabu_eval.total_travel_time, 2),
                 "lateness_reduction_min": round(sweep_eval.total_late_arrival - best_tabu_eval.total_late_arrival, 2),
-                "cost_saved_usd": round(sweep_cost - tabu_cost, 2),
                 "objective_improvement_pct": round(imp_best_pct, 2)
             },
             "feasibility": {
@@ -201,7 +194,6 @@ class StudentRoutingBenchmark:
         print(f"Metrics                      | Baseline (Sweep)        | Sweep + Tabu Search (Best) | Improvement")
         print(f"-----------------------------|-------------------------|----------------------------|------------")
         print(f"Total Distance (km)          | {sweep_eval.total_distance:<23} | {best_tabu_eval.total_distance:<26} | {result_payload['improvements']['distance_reduction_km']} km")
-        print(f"Estimated Cost ($)           | ${sweep_cost:<22} | ${tabu_cost:<25} | ${result_payload['improvements']['cost_saved_usd']}")
         print(f"Total Travel Time (mins)     | {sweep_eval.total_travel_time:<23} | {best_tabu_eval.total_travel_time:<26} | {result_payload['improvements']['time_saved_min']} mins")
         print(f"Early Arrival (mins)         | {sweep_eval.total_early_arrival:<23} | {best_tabu_eval.total_early_arrival:<26} | -")
         print(f"Late Arrival (mins)          | {sweep_eval.total_late_arrival:<23} | {best_tabu_eval.total_late_arrival:<26} | {result_payload['improvements']['lateness_reduction_min']} mins")

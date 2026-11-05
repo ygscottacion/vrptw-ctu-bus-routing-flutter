@@ -1,13 +1,12 @@
 import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { api, setAuthFailureHandler, WS_URL } from './services/api';
+import { api, setAuthFailureHandler } from './services/api';
 import { supabase } from './services/supabase';
 
 type User = { id: string; role: string; email?: string | null; full_name?: string | null; phone?: string | null; username?: string };
 type Vehicle = { id: string; license_plate: string; capacity: number; driver?: User; driver_id?: string };
 type RouteDriverOption = { id: string; full_name?: string | null; phone?: string | null; vehicle_id: string; license_plate: string; capacity: number; busy: boolean };
 type Incident = { id: string; title: string; description?: string; status: string; reported_at: string; driver?: User };
-type BusLocation = { vehicle_id: string; license_plate?: string; latitude: number; longitude: number; speed?: number; status?: string };
 type LocationItem = { id: string; code?: string; name: string; latitude: number; longitude: number };
 type RouteStop = { id: string; route_id: string; location_id: string; stop_order: number; arrival_time?: string; departure_time?: string; time_window_start?: string; time_window_end?: string; location?: LocationItem };
 type RouteItem = {
@@ -34,19 +33,17 @@ type RouteItem = {
 
 declare global {
   interface Window {
-    L: any;
+    goongjs: any;
   }
 }
 
 const menu = [
   ['/dashboard', '▦', 'Tổng quan'],
-  ['/map', '📍', 'Bản đồ Realtime'],
+  ['/map', '📍', 'Bản đồ tuyến xe'],
   ['/vehicles', '🚌', 'Xe buýt'],
   ['/routes', '⌁', 'Tuyến đường & Duyệt'],
   ['/users', '♙', 'Người dùng'],
-  ['/incidents', '⚠', 'Sự cố'],
-  ['/reports', '◔', 'Báo cáo'],
-  ['/settings', '⚙', 'Cài đặt']
+  ['/incidents', '⚠', 'Sự cố']
 ];
 
 export default function App() {
@@ -231,13 +228,11 @@ function Layout({ user, onLogout }: { user: User; onLogout: () => void }) {
         </header>
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/map" element={<RealtimeMapPage />} />
+          <Route path="/map" element={<GeneratedRoutesMapPage />} />
           <Route path="/vehicles" element={<Vehicles />} />
           <Route path="/routes" element={<RouteGenerator />} />
           <Route path="/users" element={<Users />} />
           <Route path="/incidents" element={<Incidents />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </section>
@@ -293,11 +288,11 @@ function Dashboard() {
             Trạng thái vận hành chung <span className="ok">● {data.system_status || 'ONLINE'}</span>
           </h2>
           <p>
-            Đội xe buýt Đại học Cần Thơ đang hoạt động theo đúng lịch trình. Sử dụng mục <b>Bản đồ Realtime</b> để theo dõi chính xác vị trí GPS từng xe.
+            Xem các tuyến xe đã được sinh theo ngày, đối chiếu thứ tự trạm và chọn từng tuyến để kiểm tra chi tiết trên bản đồ.
           </p>
           <div style={{ marginTop: 15 }}>
             <NavLink to="/map" className="badge" style={{ textDecoration: 'none', padding: '8px 14px', fontSize: 13 }}>
-              📍 Mở bản đồ giám sát Realtime →
+              📍 Mở bản đồ tuyến xe →
             </NavLink>
           </div>
         </section>
@@ -326,152 +321,278 @@ function Stat({ label, value, icon, danger }: any) {
   );
 }
 
-function RealtimeMapPage() {
+function GeneratedRoutesMapPage() {
   const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMap = useRef<any>(null);
-  const markersRef = useRef<Record<string, any>>({});
-  const [buses, setBuses] = useState<BusLocation[]>([]);
-  const [wsConnected, setWsConnected] = useState(false);
-  const [vehiclesList, setVehiclesList] = useState<Vehicle[]>([]);
+  const goongMap = useRef<any>(null);
+  const mapLoadedRef = useRef(false);
+  const renderRevision = useRef(0);
+  const [mapReady, setMapReady] = useState(false);
+  const [mapError, setMapError] = useState('');
+  const [routes, setRoutes] = useState<RouteItem[]>([]);
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const [selectedRouteId, setSelectedRouteId] = useState('all');
+  const [loadingRoutes, setLoadingRoutes] = useState(true);
+  const [routesError, setRoutesError] = useState('');
 
   useEffect(() => {
-    api.get<Vehicle[]>('/vehicles/').then(setVehiclesList).catch(() => {});
-  }, []);
-
-  const updateMarkers = (locations: BusLocation[]) => {
-    if (!leafletMap.current || !window.L) return;
-
-    locations.forEach((bus) => {
-      const { vehicle_id, license_plate, latitude, longitude, speed = 0, status = 'in_progress' } = bus;
-
-      const popupContent = `
-        <div class="bus-popup">
-          <h4>🚌 Xe ${license_plate || `#${vehicle_id.slice(0, 8)}`}</h4>
-          <p>Tốc độ: <b>${speed} km/h</b></p>
-          <p>Tọa độ: <code>${latitude.toFixed(4)}, ${longitude.toFixed(4)}</code></p>
-          <p>Trạng thái: <span class="bus-status-tag ${status}">${status === 'in_progress' ? 'Đang chạy' : 'Đang chờ'}</span></p>
-        </div>
-      `;
-
-      if (markersRef.current[vehicle_id]) {
-        markersRef.current[vehicle_id].setLatLng([latitude, longitude]);
-        markersRef.current[vehicle_id].setPopupContent(popupContent);
-      } else {
-        const marker = window.L.marker([latitude, longitude]).addTo(leafletMap.current);
-        marker.bindPopup(popupContent);
-        markersRef.current[vehicle_id] = marker;
+    if (!mapRef.current || goongMap.current) return;
+    if (!window.goongjs) {
+      setMapError('Không tải được Goong Maps SDK. Hãy kiểm tra kết nối mạng rồi tải lại trang.');
+      return;
+    }
+    if (!window.goongjs.supported()) {
+      setMapError('Trình duyệt hiện tại không hỗ trợ Goong Maps/WebGL.');
+      return;
+    }
+    const goongTileKey = (import.meta as any).env?.VITE_GOONG_MAPTILES_KEY || 'rwZKp27qLAlPcckb3HOe3E4JwiOaR54wPiW9hwJx';
+    window.goongjs.accessToken = goongTileKey;
+    const map = new window.goongjs.Map({
+      container: mapRef.current,
+      style: 'https://tiles.goong.io/assets/goong_map_web.json',
+      center: [105.7684, 10.0305],
+      zoom: 13
+    });
+    goongMap.current = map;
+    map.on('load', () => {
+      map.addSource('generated-route-lines', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'generated-route-lines',
+        type: 'line',
+        source: 'generated-route-lines',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-opacity': 0.9 }
+      });
+      map.addSource('generated-route-stops', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
+      map.addLayer({
+        id: 'generated-route-stops',
+        type: 'circle',
+        source: 'generated-route-stops',
+        paint: {
+          'circle-radius': ['get', 'radius'],
+          'circle-color': ['get', 'color'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2
+        }
+      });
+      map.on('click', 'generated-route-stops', (event: any) => {
+        const feature = event.features?.[0];
+        if (!feature) return;
+        const [lng, lat] = feature.geometry.coordinates;
+        const properties = feature.properties || {};
+        const popup = document.createElement('div');
+        const name = document.createElement('strong');
+        name.textContent = properties.name || 'Trạm xe buýt';
+        const route = document.createElement('div');
+        route.textContent = properties.route || '';
+        const order = document.createElement('small');
+        order.textContent = `Thứ tự trạm: ${properties.order ?? ''}`;
+        popup.append(name, route, order);
+        new window.goongjs.Popup({ closeButton: true })
+          .setLngLat([lng, lat])
+          .setDOMContent(popup)
+          .addTo(map);
+      });
+      map.on('mouseenter', 'generated-route-stops', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'generated-route-stops', () => { map.getCanvas().style.cursor = ''; });
+      mapLoadedRef.current = true;
+      setMapError('');
+      setMapReady(true);
+    });
+    map.on('error', (event: any) => {
+      if (!mapLoadedRef.current) {
+        setMapError(event.error?.message || 'Goong Maps không tải được bản đồ. Hãy kiểm tra MapTiles API key và domain trên Goong Console.');
       }
     });
-  };
-
-  useEffect(() => {
-    if (!mapRef.current || leafletMap.current) return;
-
-    if (window.L) {
-      const map = window.L.map(mapRef.current).setView([10.0305, 105.7684], 15);
-      const goongTileKey = (import.meta as any).env?.VITE_GOONG_MAPTILES_KEY || 'rwZKp27qLAlPcckb3HOe3E4JwiOaR54wPiW9hwJx';
-      window.L.tileLayer(`https://tiles.goong.io/assets/tiles/{z}/{x}/{y}.png?api_key=${goongTileKey}`, {
-        attribution: '&copy; Goong Maps'
-      }).addTo(map);
-      leafletMap.current = map;
-    }
-  }, []);
-
-  useEffect(() => {
-    let socket: WebSocket | null = null;
-    try {
-      socket = new WebSocket(WS_URL);
-      socket.onopen = () => setWsConnected(true);
-      socket.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload && payload.vehicle_id) {
-            setBuses((prev) => {
-              const idx = prev.findIndex((b) => b.vehicle_id === payload.vehicle_id);
-              let updated: BusLocation[];
-              if (idx >= 0) {
-                updated = [...prev];
-                updated[idx] = { ...updated[idx], ...payload };
-              } else {
-                updated = [...prev, payload];
-              }
-              updateMarkers(updated);
-              return updated;
-            });
-          }
-        } catch (e) {}
-      };
-      socket.onerror = () => setWsConnected(false);
-      socket.onclose = () => setWsConnected(false);
-    } catch (e) {
-      setWsConnected(false);
-    }
-
     return () => {
-      if (socket) socket.close();
+      map.remove();
+      goongMap.current = null;
+      mapLoadedRef.current = false;
     };
   }, []);
 
-  const centerBus = (bus: BusLocation) => {
-    if (leafletMap.current) {
-      leafletMap.current.setView([bus.latitude, bus.longitude], 17);
-      if (markersRef.current[bus.vehicle_id]) {
-        markersRef.current[bus.vehicle_id].openPopup();
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingRoutes(true);
+    setRoutesError('');
+    setRoutes([]);
+    setSelectedRouteId('all');
+    api.get<RouteItem[]>(`/routes/?service_date=${encodeURIComponent(selectedDate)}`)
+      .then((items) => {
+        if (!cancelled) setRoutes(items);
+      })
+      .catch((error: Error) => {
+        if (!cancelled) setRoutesError(error.message || 'Không tải được danh sách tuyến.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRoutes(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedDate]);
+
+  useEffect(() => {
+    const map = goongMap.current;
+    if (!map || !mapReady || !mapLoadedRef.current || loadingRoutes) return;
+
+    const revision = ++renderRevision.current;
+    const visibleRoutes = selectedRouteId === 'all'
+      ? routes
+      : routes.filter((route) => route.id === selectedRouteId);
+    const palette = ['#087b7c', '#e64b3c', '#6b58b8', '#d58a12', '#27804b', '#2873b8', '#bd4d83'];
+    const allCoordinates: [number, number][] = [];
+    const stopFeatures: any[] = [];
+    const lineFeatures: any[] = [];
+
+    const routeLabel = (route: RouteItem) => {
+      const direction = route.trip_type === 'pickup' ? 'Chiều đi' : 'Chiều về';
+      return `CT-${route.id.slice(0, 8).toUpperCase()} • ${direction} • ${route.session_id}`;
+    };
+
+    visibleRoutes.forEach((route, routeIndex) => {
+      const color = palette[routeIndex % palette.length];
+      const orderedStops = [...(route.stops || [])].sort((a, b) => a.stop_order - b.stop_order);
+      const coordinates = orderedStops.flatMap((stop) => {
+        const lat = Number(stop.location?.latitude);
+        const lng = Number(stop.location?.longitude);
+        return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180
+          ? [[lat, lng] as [number, number]]
+          : [];
+      });
+      allCoordinates.push(...coordinates);
+
+      orderedStops.forEach((stop) => {
+        const lat = Number(stop.location?.latitude);
+        const lng = Number(stop.location?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+        stopFeatures.push({
+          type: 'Feature',
+          properties: {
+            name: stop.location?.name || `Trạm ${stop.stop_order}`,
+            route: routeLabel(route),
+            order: stop.stop_order,
+            color,
+            radius: selectedRouteId === 'all' ? 7 : 9
+          },
+          geometry: { type: 'Point', coordinates: [lng, lat] }
+        });
+      });
+
+      if (coordinates.length > 1) {
+        const waypoints = coordinates.map(([lat, lng]) => `${lat},${lng}`).join(';');
+        api.get<{ routed?: boolean; points?: number[][] }>(`/routes/polyline?waypoints=${encodeURIComponent(waypoints)}`)
+          .then((result) => {
+            if (revision !== renderRevision.current || result.routed !== true || !Array.isArray(result.points)) return;
+            const path = result.points
+              .filter((point) => Array.isArray(point) && point.length >= 2 && Number.isFinite(point[0]) && Number.isFinite(point[1]))
+              .map(([lat, lng]) => [lng, lat] as [number, number]);
+            if (path.length < 2) return;
+            lineFeatures.push({
+              type: 'Feature',
+              properties: { color },
+              geometry: { type: 'LineString', coordinates: path }
+            });
+            map.getSource('generated-route-lines')?.setData({ type: 'FeatureCollection', features: [...lineFeatures] });
+          })
+          .catch(() => {});
       }
+    });
+
+    map.getSource('generated-route-stops')?.setData({ type: 'FeatureCollection', features: stopFeatures });
+    if (allCoordinates.length > 0) {
+      const bounds = new window.goongjs.LngLatBounds();
+      allCoordinates.forEach(([lat, lng]) => bounds.extend([lng, lat]));
+      map.fitBounds(bounds, { padding: 28, maxZoom: 15 });
     }
+    map.getSource('generated-route-lines')?.setData({ type: 'FeatureCollection', features: [] });
+  }, [routes, selectedRouteId, loadingRoutes, mapReady]);
+
+  const visibleRoutes = selectedRouteId === 'all'
+    ? routes
+    : routes.filter((route) => route.id === selectedRouteId);
+  const describeRoute = (route: RouteItem) => {
+    const direction = route.trip_type === 'pickup' ? 'Chiều đi' : 'Chiều về';
+    return `CT-${route.id.slice(0, 8).toUpperCase()} • ${direction} • ${route.session_id}`;
   };
 
   return (
-    <Page title="Bản đồ Giám sát Xe buýt Realtime">
-      <div className="live-feed-bar">
-        <div>
-          <span className="pulse-dot" />
-          Kênh giám sát vị trí GPS trực tiếp {wsConnected ? '(Đã kết nối WebSocket)' : '(Chờ kết nối Realtime GPS từ tài xế)'}
+    <Page title="Bản đồ Tuyến xe đã sinh">
+      <div className="live-feed-bar" style={{ flexWrap: 'wrap', gap: 14 }}>
+        <strong>Chọn ngày và tuyến đã được sinh</strong>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            Ngày:
+            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            Tuyến:
+            <select value={selectedRouteId} onChange={(event) => setSelectedRouteId(event.target.value)} disabled={routes.length === 0}>
+              <option value="all">Tất cả tuyến trong ngày ({routes.length})</option>
+              {routes.map((route) => <option key={route.id} value={route.id}>{describeRoute(route)}</option>)}
+            </select>
+          </label>
         </div>
-        <small style={{ opacity: 0.9 }}>Cập nhật 15s/lần</small>
       </div>
 
       <div className="two-col">
-        <div ref={mapRef} className="map-container" />
+        <div className="map-container" style={{ position: 'relative' }}>
+          <div ref={mapRef} style={{ position: 'absolute', inset: 0 }} />
+          {mapError && <div className="map-error">{mapError}</div>}
+        </div>
 
         <section className="panel" style={{ height: 520, overflowY: 'auto' }}>
-          <h2>Danh sách xe buýt đang phát GPS ({buses.length})</h2>
-          {buses.length === 0 ? (
-            <p style={{ color: '#708187', fontSize: 14 }}>Hiện chưa có xe buýt nào phát GPS trong ca làm việc.</p>
+          <h2>{selectedRouteId === 'all' ? `Các tuyến trong ngày (${visibleRoutes.length})` : 'Thông tin tuyến đang chọn'}</h2>
+          {loadingRoutes ? (
+            <p style={{ color: '#708187', fontSize: 14 }}>Đang tải các tuyến trong ngày...</p>
+          ) : routesError ? (
+            <p style={{ color: '#b42318', fontSize: 14 }}>{routesError}</p>
+          ) : visibleRoutes.length === 0 ? (
+            <p style={{ color: '#708187', fontSize: 14 }}>Ngày này chưa có tuyến nào được sinh.</p>
           ) : (
             <div style={{ display: 'grid', gap: 10 }}>
-              {buses.map((bus) => {
-                const matchedVeh = vehiclesList.find((v) => v.id === bus.vehicle_id);
+              {visibleRoutes.map((route) => {
+                const selected = selectedRouteId === route.id;
+                const stops = [...(route.stops || [])].sort((a, b) => a.stop_order - b.stop_order);
                 return (
                   <article
-                    key={bus.vehicle_id}
-                    onClick={() => centerBus(bus)}
+                    key={route.id}
+                    onClick={() => setSelectedRouteId(route.id)}
                     style={{
                       padding: 12,
                       borderRadius: 8,
-                      border: '1px solid #e2eaec',
+                      border: selected ? '1px solid #087b7c' : '1px solid #e2eaec',
                       cursor: 'pointer',
-                      background: '#fcfdfe'
+                      background: selected ? '#effafa' : '#fcfdfe'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <strong style={{ color: '#087b7c' }}>
-                        🚌 {bus.license_plate || matchedVeh?.license_plate || `Xe #${bus.vehicle_id.slice(0, 8)}`}
-                      </strong>
-                      <span className={`bus-status-tag ${bus.status || 'in_progress'}`}>
-                        {bus.status === 'in_progress' ? 'Đang chạy' : 'Đang dừng'}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <strong style={{ color: '#087b7c' }}>{describeRoute(route)}</strong>
+                      <span className={`bus-status-tag ${route.status === 'in_progress' ? 'active' : 'idle'}`}>
+                        {route.status === 'in_progress' ? 'Đang chạy' : route.status === 'completed' ? 'Hoàn thành' : route.status === 'approved' ? 'Đã duyệt' : route.status === 'rejected' ? 'Từ chối' : 'Chờ duyệt'}
                       </span>
                     </div>
                     <small style={{ color: '#65777d', display: 'block', marginTop: 4 }}>
-                      Tài xế: {matchedVeh?.driver?.full_name || matchedVeh?.driver?.username || 'Đang phân công'}
+                      Xe: {route.vehicle?.license_plate || 'Chưa phân công'} • {stops.length} trạm
                     </small>
                     <small style={{ color: '#087b7c', display: 'block', marginTop: 2 }}>
-                      Tốc độ: {bus.speed ?? 0} km/h • Click để xem vị trí trên bản đồ
+                      {stops[0]?.location?.name || 'Điểm đầu chưa rõ'} → {stops[stops.length - 1]?.location?.name || 'Điểm cuối chưa rõ'}
                     </small>
                   </article>
                 );
               })}
             </div>
+          )}
+          {selectedRouteId !== 'all' && routes.length > 0 && (
+            <button type="button" style={{ marginTop: 12 }} onClick={() => setSelectedRouteId('all')}>
+              Hiển thị tất cả tuyến
+            </button>
           )}
         </section>
       </div>
@@ -1026,40 +1147,6 @@ function RouteGenerator() {
           </div>
         </div>
       )}
-    </Page>
-  );
-}
-
-function Reports() {
-  return (
-    <Page title="Báo cáo & Thống kê Vận hành">
-      <div className="stats">
-        <Stat label="Tổng lượt sinh viên đã đón" value="1,240" icon="🚌" />
-        <Stat label="Tỷ lệ đúng giờ" value="98.5%" icon="⏱" />
-        <Stat label="Doanh thu bán vé tháng" value="18.5M" icon="💳" />
-        <Stat label="Đánh giá trung bình" value="4.9/5" icon="⭐" />
-      </div>
-
-      <section className="panel">
-        <h2>Doanh thu & Lưu lượng sử dụng xe buýt</h2>
-        <p>Báo cáo tổng hợp số lượt di chuyển của sinh viên Đại học Cần Thơ trên tất cả các tuyến cố định và tuyến đưa đón campus.</p>
-      </section>
-    </Page>
-  );
-}
-
-function Settings() {
-  return (
-    <Page title="Cài đặt Hệ thống">
-      <section className="panel">
-        <h2>Cấu hình Kết nối Backend & Realtime Service</h2>
-        <p>
-          Địa chỉ REST API: <code>{import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'}</code>
-        </p>
-        <p>
-          Kênh Realtime WebSocket: <code>{WS_URL}</code>
-        </p>
-      </section>
     </Page>
   );
 }

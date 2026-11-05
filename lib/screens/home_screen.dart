@@ -25,16 +25,6 @@ class _HomeScreenState extends State<HomeScreen>
   late AnimationController _co2Controller;
   late Animation<double> _co2Animation;
 
-  int? _balance;
-  bool _walletLoading = true;
-  String? _walletError;
-
-  // Tiny overlap of the wallet card into the bottom of the hero image.
-  // Uses Transform.translate (not Positioned overflow) so the card's
-  // hit-test area stays accurate even though it's only overlapping a
-  // couple of points.
-  static const double _walletOverlap = 3;
-
   @override
   void initState() {
     super.initState();
@@ -46,7 +36,6 @@ class _HomeScreenState extends State<HomeScreen>
       CurvedAnimation(parent: _co2Controller, curve: Curves.easeOut),
     );
     _co2Controller.forward();
-    _loadWalletBalance();
 
     Future.delayed(const Duration(milliseconds: 800), () {
       if (mounted) {
@@ -58,33 +47,6 @@ class _HomeScreenState extends State<HomeScreen>
         );
       }
     });
-  }
-
-  Future<void> _loadWalletBalance() async {
-    final api = widget.api;
-    if (api == null) {
-      if (!mounted) return;
-      setState(() {
-        _walletLoading = false;
-        _walletError = 'Không thể tải số dư ví';
-      });
-      return;
-    }
-    try {
-      final balance = await api.fetchWalletBalance();
-      if (!mounted) return;
-      setState(() {
-        _balance = balance;
-        _walletError = null;
-        _walletLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _walletError = error.toString().replaceFirst('Exception: ', '');
-        _walletLoading = false;
-      });
-    }
   }
 
   @override
@@ -103,14 +65,6 @@ class _HomeScreenState extends State<HomeScreen>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHero(context),
-              Transform.translate(
-                offset: const Offset(0, -_walletOverlap),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                  child: _buildWalletSection(context),
-                ),
-              ),
               const SizedBox(height: AppSpacing.lg),
               _buildBody(context),
             ],
@@ -215,186 +169,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ─── CTUPay WALLET SECTION ────────────────────────────────
-  Widget _buildWalletSection(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md, vertical: AppSpacing.sm),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(AppRadius.md),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: const BoxDecoration(
-              color: AppColors.tealBg,
-              shape: BoxShape.circle,
-            ),
-            child:
-                const Center(child: Text('💳', style: TextStyle(fontSize: 14))),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'CTUPay',
-                  style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500),
-                ),
-                if (_walletLoading)
-                  const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                else if (_walletError != null)
-                  GestureDetector(
-                    onTap: _loadWalletBalance,
-                    child: Text(
-                      'Không tải được • Thử lại',
-                      style: TextStyle(
-                        color: AppColors.teal,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                else
-                  Text(
-                    '${_formatCurrency(_balance)} ₫',
-                    style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700),
-                  ),
-              ],
-            ),
-          ),
-          _walletActionButton(
-            'Nạp',
-            () => _showAmountDialog(context, isDeposit: true),
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          _walletActionButton(
-            'Rút',
-            () => _showAmountDialog(context, isDeposit: false),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _walletActionButton(String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.tealBg,
-          borderRadius: BorderRadius.circular(AppRadius.full),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-              color: AppColors.teal, fontWeight: FontWeight.w600, fontSize: 12),
-        ),
-      ),
-    );
-  }
-
-  void _showAmountDialog(BuildContext context, {required bool isDeposit}) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppRadius.md)),
-        title: Text(isDeposit ? 'Nạp tiền vào CTUPay' : 'Rút tiền từ CTUPay'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(),
-          decoration: const InputDecoration(
-            hintText: 'Nhập số tiền (VNĐ)',
-            prefixText: '₫ ',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.teal),
-            onPressed: () =>
-                _handleWalletSubmit(ctx, controller.text, isDeposit),
-            child: Text(
-              isDeposit ? 'Nạp' : 'Rút',
-              style: const TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _handleWalletSubmit(BuildContext ctx, String rawText, bool isDeposit) {
-    final cleaned = rawText.replaceAll('.', '').replaceAll(',', '').trim();
-    final amount = double.tryParse(cleaned) ?? 0;
-
-    if (amount <= 0) {
-      Navigator.pop(ctx);
-      showSimpleNotification(
-        const Text('Vui lòng nhập số tiền hợp lệ',
-            style: TextStyle(color: Colors.white)),
-        background: Colors.redAccent,
-      );
-      return;
-    }
-
-    if (!isDeposit && amount > (_balance ?? 0)) {
-      Navigator.pop(ctx);
-      showSimpleNotification(
-        const Text('Số dư không đủ để rút',
-            style: TextStyle(color: Colors.white)),
-        background: Colors.redAccent,
-      );
-      return;
-    }
-
-    Navigator.pop(ctx);
-    showSimpleNotification(
-      Text(
-        isDeposit
-            ? 'Chức năng nạp tiền chưa được kết nối'
-            : 'Chức năng rút tiền chưa được kết nối',
-        style: const TextStyle(color: Colors.white),
-      ),
-      background: Colors.orange,
-    );
-  }
-
-  String _formatCurrency(num? value) {
-    final val = (value ?? 0).toInt();
-    return val.toString().replaceAllMapped(
-        RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
-  }
-
   // ─── BODY ─────────────────────────────────────────────────
   Widget _buildBody(BuildContext context) {
     return Padding(
@@ -428,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen>
               Expanded(
                 child: _buildFeatureCard(
                   '🎫',
-                  'Mua vé',
+                  'Đặt vé',
                   AppColors.purpleBg,
                   () {
                     widget.onNavigateTab?.call(1);

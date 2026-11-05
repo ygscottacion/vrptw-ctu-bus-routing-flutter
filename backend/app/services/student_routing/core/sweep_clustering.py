@@ -70,9 +70,9 @@ class SweepClusterer:
         Input:
             depot: {"id": "SCHOOL", "lat": 10.0302, "lng": 105.7721}
             stations: [{"id": "ST-01", "name": "...", "lat": 10.04, "lng": 105.76, "pickup_student_count": 20, ...}]
-            vehicles: [{"id": "BUS-01", "capacity": 45}, ...]
+            vehicles: [{"id": "BUS-01", "capacity": 29}, ...]
             max_route_duration_minutes: Giới hạn thời lượng toàn tuyến (<= 90 phút theo yêu cầu validation Ngày 9)
-            max_passenger_capacity: Sức chứa tối đa (<= 45 khách)
+            max_passenger_capacity: Sức chứa tối đa (<= 29 khách)
         Output:
             Danh sách các route ban đầu (mỗi route là danh sách các trạm dừng):
             [[station1, station2], [station3, station4], ...]

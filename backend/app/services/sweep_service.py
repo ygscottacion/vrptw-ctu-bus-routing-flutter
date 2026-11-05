@@ -64,7 +64,7 @@ class SweepClusteringService:
         locations: List[Dict[str, Any]],
         vehicles: List[Dict[str, Any]],
         max_route_duration_minutes: float = 90.0,
-        max_passenger_capacity: int = 45,
+        max_passenger_capacity: int = 29,
         enforce_min_vehicles_for_60_students: bool = True
     ) -> List[Dict[str, Any]]:
         """
@@ -73,9 +73,9 @@ class SweepClusteringService:
             locations: [{"id": 1, "latitude": float, "longitude": float, "demand": int, ...}]
             vehicles: [{"id": 1, "capacity": int, ...}]
             max_route_duration_minutes: Ngưỡng tối đa thời gian toàn tuyến (mặc định 90 phút theo chuẩn Khánh validation Ngày 9)
-            max_passenger_capacity: Sức chứa tối đa chuẩn mỗi xe (mặc định 45 khách)
+            max_passenger_capacity: Sức chứa tối đa chuẩn mỗi xe (mặc định 29 khách)
         Output:
-            Danh sách cụm xe: [{"vehicle_id": 1, "capacity": 45, "current_demand": x, "stops": [loc1, ...]}, ...]
+            Danh sách cụm xe: [{"vehicle_id": 1, "capacity": 29, "current_demand": x, "stops": [loc1, ...]}, ...]
         """
         if not locations or not vehicles:
             return []
@@ -99,11 +99,11 @@ class SweepClusteringService:
         sorted_locations = sorted(locations_with_angle, key=lambda x: x["polar_angle"])
 
         # 3. Phân bổ và gom cụm
-        # Nếu có >= 60 sinh viên và có >= 2 xe, đảm bảo mỗi xe không chứa quá 45 sinh viên
+        # Nếu có >= 60 sinh viên và có >= 2 xe, đảm bảo mỗi xe không chứa quá 29 sinh viên
         # và phân bổ chia đều để dùng >= 2 xe
         effective_vehicles = [dict(v) for v in vehicles]
         if enforce_min_vehicles_for_60_students and total_demand >= 60 and len(effective_vehicles) >= 2:
-            # Điều chỉnh capacity trần cho xe không vượt quá 45 hoặc phân bổ tải hợp lý
+            # Điều chỉnh capacity trần cho xe không vượt quá 29
             for v in effective_vehicles:
                 v["capacity"] = min(v.get("capacity", max_passenger_capacity), max_passenger_capacity)
 

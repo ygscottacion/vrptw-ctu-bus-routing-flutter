@@ -128,7 +128,6 @@ class ApiService {
           .eq('vehicle_id', vehicleId)
           .order('service_date', ascending: false);
 
-
       if ((routesRes as List).isNotEmpty) {
         final routes = (routesRes as List).map((r) {
           final rawStops = (r['route_stops'] as List? ?? [])
@@ -179,6 +178,27 @@ class ApiService {
     return json.decode(response.body) as List<dynamic>;
   }
 
+  Future<List<dynamic>> fetchMyNotifications() async {
+    final response = await http.get(
+      Uri.parse('${ApiConfig.baseUrl}${ApiConfig.notificationsMe}'),
+      headers: _headers,
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return json.decode(response.body) as List<dynamic>;
+  }
+
+  Future<Map<String, dynamic>> markNotificationRead(
+      String notificationId, bool isRead) async {
+    final response = await http.patch(
+      Uri.parse(
+          '${ApiConfig.baseUrl}${ApiConfig.notifications}/$notificationId'),
+      headers: _headers,
+      body: json.encode({'is_read': isRead}),
+    );
+    if (response.statusCode != 200) throw Exception(_message(response));
+    return json.decode(response.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> bookTicket({
     required String pickupLocationId,
     required DateTime serviceDate,
@@ -222,8 +242,8 @@ class ApiService {
           .maybeSingle();
       if (res != null) {
         final rawStops = (res['route_stops'] as List? ?? [])
-          ..sort((a, b) =>
-              (a['stop_order'] ?? 0).compareTo(b['stop_order'] ?? 0));
+          ..sort(
+              (a, b) => (a['stop_order'] ?? 0).compareTo(b['stop_order'] ?? 0));
         return {
           ...res,
           'stops': rawStops.map((s) {
@@ -273,22 +293,23 @@ class ApiService {
     double speed = 0.0,
     double accuracy = 0.0,
   }) async {
-    try {
-      await http
-          .post(
-            Uri.parse('${ApiConfig.baseUrl}${ApiConfig.gpsPost}'),
-            headers: _headers,
-            body: json.encode({
-              'route_id': routeId,
-              'latitude': latitude,
-              'longitude': longitude,
-              'heading': heading,
-              'speed': speed,
-              'accuracy': accuracy,
-            }),
-          )
-          .timeout(const Duration(seconds: 5));
-    } catch (_) {}
+    final response = await http
+        .post(
+          Uri.parse('${ApiConfig.baseUrl}${ApiConfig.gpsPost}'),
+          headers: _headers,
+          body: json.encode({
+            'route_id': routeId,
+            'latitude': latitude,
+            'longitude': longitude,
+            'heading': heading,
+            'speed': speed,
+            'accuracy': accuracy,
+          }),
+        )
+        .timeout(const Duration(seconds: 6));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_message(response));
+    }
   }
 
   Future<Map<String, dynamic>?> fetchLatestGps(String routeId) async {
@@ -323,8 +344,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> _patch(String path) async {
-    final response = await http.patch(
-        Uri.parse('${ApiConfig.baseUrl}$path'),
+    final response = await http.patch(Uri.parse('${ApiConfig.baseUrl}$path'),
         headers: _headers);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw Exception(_message(response));

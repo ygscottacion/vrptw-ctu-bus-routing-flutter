@@ -95,16 +95,25 @@ class StudentShell extends StatefulWidget {
 
 class _StudentShellState extends State<StudentShell> {
   int _index = 0;
+  int _bookingRequest = 0;
 
   @override
   Widget build(BuildContext context) {
     final screens = [
       HomeScreen(
         onNavigateTab: (i) => setState(() => _index = i),
+        onNavigateToBooking: () => setState(() {
+          _index = 1;
+          _bookingRequest++;
+        }),
         api: widget.api,
       ),
-      TicketScreen(api: widget.api),
-      const NotificationScreen(),
+      TicketScreen(
+        key: ValueKey(_bookingRequest),
+        api: widget.api,
+        initialTab: _bookingRequest == 0 ? 0 : 1,
+      ),
+      NotificationScreen(api: widget.api, isActive: _index == 2),
       const SettingsScreen(),
     ];
 

@@ -61,6 +61,8 @@ class ApiConfig {
       '/auth/me'; // TODO: xac nhan lai path chinh xac voi Nha (co the la '/me')
   static const String locations = '/locations/';
   static const String walletMe = '/wallet/me';
+  static const String notifications = '/notifications';
+  static const String notificationsMe = '/notifications/me';
   static const String vehicles = '/vehicles/';
   static const String routesGenerate = '/routes/generate';
   static const String routesActive = '/routes/';

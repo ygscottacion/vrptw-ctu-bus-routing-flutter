@@ -9,6 +9,8 @@ from app.models.idempotency_key import IdempotencyKey
 from app.models.incident import Incident
 from app.models.booking import Booking
 from app.models.route_matrix_cache import RouteMatrixCache
+from app.models.notification import Notification
+from app.models.gps_log import GpsLog
 
 __all__ = [
     "Profile",
@@ -29,4 +31,6 @@ __all__ = [
     "Incident",
     "Booking",
     "RouteMatrixCache",
+    "Notification",
+    "GpsLog",
 ]
