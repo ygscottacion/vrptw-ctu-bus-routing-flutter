@@ -17,3 +17,6 @@ ENV/
 # Database / SQLite / Temp logs
 *.sqlite3
 *.log
+
+# Docker
+backend/docker-compose*.yml
