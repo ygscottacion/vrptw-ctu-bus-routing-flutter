@@ -1,0 +1,1422 @@
+{
+  "instance": "RC201_reverse_pickup",
+  "algorithm": "sweep_tabu_v2",
+  "seed": 103,
+  "is_feasible": true,
+  "vehicles_used": 5,
+  "total_distance": 1703.50312,
+  "total_travel_time": 1703.50312,
+  "total_service_time": 1000.0,
+  "capacity_violations": 0,
+  "time_window_violations": 0,
+  "depot_window_violations": 0,
+  "fleet_violations": 0,
+  "runtime_seconds": 5.00556,
+  "initial_sweep": {
+    "is_feasible": true,
+    "vehicles_used": 5,
+    "total_distance": 2100.1179248197914
+  },
+  "budget": {
+    "max_iterations": 10000,
+    "max_runtime_seconds": 5.0,
+    "iterations_completed": 25,
+    "evaluations_completed": 12223,
+    "stop_reason": "time_limit"
+  },
+  "tabu_diagnostics": {
+    "base_tenure": 10,
+    "dynamic_tenure_enabled": true,
+    "aspiration_enabled": true,
+    "diversification_enabled": true,
+    "diversification_count": 0,
+    "candidates_per_iteration": 500,
+    "candidate_counts": {
+      "2opt": 657,
+      "swap": 3731,
+      "relocate": 7834
+    },
+    "feasible_candidates_evaluated": 571,
+    "infeasible_candidates_evaluated": 11651,
+    "improving_candidates_found": 56,
+    "best_distance_by_iteration": [
+      {
+        "iteration": 0,
+        "vehicles_used": 5,
+        "total_distance": 2100.1179248197914
+      },
+      {
+        "iteration": 1,
+        "vehicles_used": 5,
+        "total_distance": 2024.1768308728706
+      },
+      {
+        "iteration": 2,
+        "vehicles_used": 5,
+        "total_distance": 1959.3052922432837
+      },
+      {
+        "iteration": 3,
+        "vehicles_used": 5,
+        "total_distance": 1943.4715311697971
+      },
+      {
+        "iteration": 4,
+        "vehicles_used": 5,
+        "total_distance": 1921.1511224079766
+      },
+      {
+        "iteration": 5,
+        "vehicles_used": 5,
+        "total_distance": 1907.0486761782295
+      },
+      {
+        "iteration": 6,
+        "vehicles_used": 5,
+        "total_distance": 1904.9747732432209
+      },
+      {
+        "iteration": 7,
+        "vehicles_used": 5,
+        "total_distance": 1886.4086927773249
+      },
+      {
+        "iteration": 8,
+        "vehicles_used": 5,
+        "total_distance": 1874.5890419823343
+      },
+      {
+        "iteration": 9,
+        "vehicles_used": 5,
+        "total_distance": 1870.0446951978251
+      },
+      {
+        "iteration": 10,
+        "vehicles_used": 5,
+        "total_distance": 1856.4309971537286
+      },
+      {
+        "iteration": 11,
+        "vehicles_used": 5,
+        "total_distance": 1847.2345043392033
+      },
+      {
+        "iteration": 12,
+        "vehicles_used": 5,
+        "total_distance": 1834.4968959198611
+      },
+      {
+        "iteration": 13,
+        "vehicles_used": 5,
+        "total_distance": 1817.2920349088672
+      },
+      {
+        "iteration": 14,
+        "vehicles_used": 5,
+        "total_distance": 1798.3923002916688
+      },
+      {
+        "iteration": 15,
+        "vehicles_used": 5,
+        "total_distance": 1779.0276074622916
+      },
+      {
+        "iteration": 16,
+        "vehicles_used": 5,
+        "total_distance": 1764.7571696479652
+      },
+      {
+        "iteration": 17,
+        "vehicles_used": 5,
+        "total_distance": 1732.816981294472
+      },
+      {
+        "iteration": 18,
+        "vehicles_used": 5,
+        "total_distance": 1730.7654664686652
+      },
+      {
+        "iteration": 19,
+        "vehicles_used": 5,
+        "total_distance": 1726.590968859035
+      },
+      {
+        "iteration": 20,
+        "vehicles_used": 5,
+        "total_distance": 1721.516655662493
+      },
+      {
+        "iteration": 21,
+        "vehicles_used": 5,
+        "total_distance": 1716.3611007058162
+      },
+      {
+        "iteration": 22,
+        "vehicles_used": 5,
+        "total_distance": 1709.8069286074337
+      },
+      {
+        "iteration": 23,
+        "vehicles_used": 5,
+        "total_distance": 1704.4406054026927
+      },
+      {
+        "iteration": 24,
+        "vehicles_used": 5,
+        "total_distance": 1703.503120313047
+      }
+    ]
+  },
+  "routes": [
+    {
+      "vehicle_index": 1,
+      "capacity": 1000,
+      "total_demand": 350,
+      "route_distance": 457.863142,
+      "departure_time": 0,
+      "return_time": 898.007527,
+      "stops": [
+        {
+          "id": "customer_100",
+          "source_customer_id": 100,
+          "arrival_time": 19.235384061671343,
+          "service_start_time": 20.0,
+          "departure_time": 30.0,
+          "demand": 3,
+          "cumulative_load": 3,
+          "time_window_start": 20,
+          "time_window_end": 140,
+          "service_time": 10
+        },
+        {
+          "id": "customer_70",
+          "source_customer_id": 70,
+          "arrival_time": 34.47213595499958,
+          "service_start_time": 34.47213595499958,
+          "departure_time": 44.47213595499958,
+          "demand": 23,
+          "cumulative_load": 26,
+          "time_window_start": 20,
+          "time_window_end": 140,
+          "service_time": 10
+        },
+        {
+          "id": "customer_93",
+          "source_customer_id": 93,
+          "arrival_time": 75.5365850890177,
+          "service_start_time": 75.5365850890177,
+          "departure_time": 85.5365850890177,
+          "demand": 3,
+          "cumulative_load": 29,
+          "time_window_start": 22,
+          "time_window_end": 142,
+          "service_time": 10
+        },
+        {
+          "id": "customer_35",
+          "source_customer_id": 35,
+          "arrival_time": 119.07760475151454,
+          "service_start_time": 173.0,
+          "departure_time": 183.0,
+          "demand": 20,
+          "cumulative_load": 49,
+          "time_window_start": 173,
+          "time_window_end": 293,
+          "service_time": 10
+        },
+        {
+          "id": "customer_1",
+          "source_customer_id": 1,
+          "arrival_time": 225.0,
+          "service_start_time": 225.0,
+          "departure_time": 235.0,
+          "demand": 20,
+          "cumulative_load": 69,
+          "time_window_start": 157,
+          "time_window_end": 277,
+          "service_time": 10
+        },
+        {
+          "id": "customer_68",
+          "source_customer_id": 68,
+          "arrival_time": 264.1547594742265,
+          "service_start_time": 264.1547594742265,
+          "departure_time": 274.1547594742265,
+          "demand": 21,
+          "cumulative_load": 90,
+          "time_window_start": 218,
+          "time_window_end": 338,
+          "service_time": 10
+        },
+        {
+          "id": "customer_96",
+          "source_customer_id": 96,
+          "arrival_time": 290.31025389563,
+          "service_start_time": 290.31025389563,
+          "departure_time": 300.31025389563,
+          "demand": 26,
+          "cumulative_load": 116,
+          "time_window_start": 268,
+          "time_window_end": 388,
+          "service_time": 10
+        },
+        {
+          "id": "customer_54",
+          "source_customer_id": 54,
+          "arrival_time": 306.31025389563,
+          "service_start_time": 306.31025389563,
+          "departure_time": 316.31025389563,
+          "demand": 16,
+          "cumulative_load": 132,
+          "time_window_start": 229,
+          "time_window_end": 349,
+          "service_time": 10
+        },
+        {
+          "id": "customer_37",
+          "source_customer_id": 37,
+          "arrival_time": 340.47634584281917,
+          "service_start_time": 340.47634584281917,
+          "departure_time": 350.47634584281917,
+          "demand": 10,
+          "cumulative_load": 142,
+          "time_window_start": 273,
+          "time_window_end": 393,
+          "service_time": 10
+        },
+        {
+          "id": "customer_43",
+          "source_customer_id": 43,
+          "arrival_time": 360.91665235172974,
+          "service_start_time": 360.91665235172974,
+          "departure_time": 370.91665235172974,
+          "demand": 20,
+          "cumulative_load": 162,
+          "time_window_start": 256,
+          "time_window_end": 376,
+          "service_time": 10
+        },
+        {
+          "id": "customer_53",
+          "source_customer_id": 53,
+          "arrival_time": 420.41412703478807,
+          "service_start_time": 455.0,
+          "departure_time": 465.0,
+          "demand": 5,
+          "cumulative_load": 167,
+          "time_window_start": 455,
+          "time_window_end": 575,
+          "service_time": 10
+        },
+        {
+          "id": "customer_90",
+          "source_customer_id": 90,
+          "arrival_time": 482.2626765016321,
+          "service_start_time": 482.2626765016321,
+          "departure_time": 492.2626765016321,
+          "demand": 6,
+          "cumulative_load": 173,
+          "time_window_start": 471,
+          "time_window_end": 591,
+          "service_time": 10
+        },
+        {
+          "id": "customer_40",
+          "source_customer_id": 40,
+          "arrival_time": 536.6811411306577,
+          "service_start_time": 536.6811411306577,
+          "departure_time": 546.6811411306577,
+          "demand": 30,
+          "cumulative_load": 203,
+          "time_window_start": 501,
+          "time_window_end": 621,
+          "service_time": 10
+        },
+        {
+          "id": "customer_41",
+          "source_customer_id": 41,
+          "arrival_time": 556.8791801578433,
+          "service_start_time": 556.8791801578433,
+          "departure_time": 566.8791801578433,
+          "demand": 20,
+          "cumulative_load": 223,
+          "time_window_start": 454,
+          "time_window_end": 574,
+          "service_time": 10
+        },
+        {
+          "id": "customer_81",
+          "source_customer_id": 81,
+          "arrival_time": 586.1145642195146,
+          "service_start_time": 586.1145642195146,
+          "departure_time": 596.1145642195146,
+          "demand": 10,
+          "cumulative_load": 233,
+          "time_window_start": 475,
+          "time_window_end": 595,
+          "service_time": 10
+        },
+        {
+          "id": "customer_61",
+          "source_customer_id": 61,
+          "arrival_time": 604.1768219678131,
+          "service_start_time": 604.1768219678131,
+          "departure_time": 614.1768219678131,
+          "demand": 9,
+          "cumulative_load": 242,
+          "time_window_start": 572,
+          "time_window_end": 692,
+          "service_time": 10
+        },
+        {
+          "id": "customer_38",
+          "source_customer_id": 38,
+          "arrival_time": 636.8483900653224,
+          "service_start_time": 636.8483900653224,
+          "departure_time": 646.8483900653224,
+          "demand": 30,
+          "cumulative_load": 272,
+          "time_window_start": 552,
+          "time_window_end": 672,
+          "service_time": 10
+        },
+        {
+          "id": "customer_44",
+          "source_customer_id": 44,
+          "arrival_time": 654.128499954603,
+          "service_start_time": 654.128499954603,
+          "departure_time": 664.128499954603,
+          "demand": 10,
+          "cumulative_load": 282,
+          "time_window_start": 613,
+          "time_window_end": 733,
+          "service_time": 10
+        },
+        {
+          "id": "customer_42",
+          "source_customer_id": 42,
+          "arrival_time": 666.128499954603,
+          "service_start_time": 797.0,
+          "departure_time": 807.0,
+          "demand": 10,
+          "cumulative_load": 292,
+          "time_window_start": 797,
+          "time_window_end": 917,
+          "service_time": 10
+        },
+        {
+          "id": "customer_36",
+          "source_customer_id": 36,
+          "arrival_time": 818.1803398874989,
+          "service_start_time": 818.1803398874989,
+          "departure_time": 828.1803398874989,
+          "demand": 40,
+          "cumulative_load": 332,
+          "time_window_start": 787,
+          "time_window_end": 907,
+          "service_time": 10
+        },
+        {
+          "id": "customer_39",
+          "source_customer_id": 39,
+          "arrival_time": 835.2514076993643,
+          "service_start_time": 835.2514076993643,
+          "departure_time": 845.2514076993643,
+          "demand": 10,
+          "cumulative_load": 342,
+          "time_window_start": 766,
+          "time_window_end": 886,
+          "service_time": 10
+        },
+        {
+          "id": "customer_72",
+          "source_customer_id": 72,
+          "arrival_time": 860.5484662401427,
+          "service_start_time": 860.5484662401427,
+          "departure_time": 870.5484662401427,
+          "demand": 8,
+          "cumulative_load": 350,
+          "time_window_start": 770,
+          "time_window_end": 890,
+          "service_time": 10
+        }
+      ]
+    },
+    {
+      "vehicle_index": 2,
+      "capacity": 1000,
+      "total_demand": 389,
+      "route_distance": 366.754478,
+      "departure_time": 0,
+      "return_time": 912.364811,
+      "stops": [
+        {
+          "id": "customer_17",
+          "source_customer_id": 17,
+          "arrival_time": 40.311288741492746,
+          "service_start_time": 127.0,
+          "departure_time": 137.0,
+          "demand": 20,
+          "cumulative_load": 20,
+          "time_window_start": 127,
+          "time_window_end": 247,
+          "service_time": 10
+        },
+        {
+          "id": "customer_60",
+          "source_customer_id": 60,
+          "arrival_time": 158.21320343559643,
+          "service_start_time": 158.21320343559643,
+          "departure_time": 168.21320343559643,
+          "demand": 17,
+          "cumulative_load": 37,
+          "time_window_start": 136,
+          "time_window_end": 256,
+          "service_time": 10
+        },
+        {
+          "id": "customer_55",
+          "source_customer_id": 55,
+          "arrival_time": 183.21320343559643,
+          "service_start_time": 231.0,
+          "departure_time": 241.0,
+          "demand": 16,
+          "cumulative_load": 53,
+          "time_window_start": 231,
+          "time_window_end": 351,
+          "service_time": 10
+        },
+        {
+          "id": "customer_4",
+          "source_customer_id": 4,
+          "arrival_time": 263.3606797749979,
+          "service_start_time": 263.3606797749979,
+          "departure_time": 273.3606797749979,
+          "demand": 40,
+          "cumulative_load": 93,
+          "time_window_start": 186,
+          "time_window_end": 306,
+          "service_time": 10
+        },
+        {
+          "id": "customer_46",
+          "source_customer_id": 46,
+          "arrival_time": 275.3606797749979,
+          "service_start_time": 341.0,
+          "departure_time": 351.0,
+          "demand": 10,
+          "cumulative_load": 103,
+          "time_window_start": 341,
+          "time_window_end": 461,
+          "service_time": 10
+        },
+        {
+          "id": "customer_3",
+          "source_customer_id": 3,
+          "arrival_time": 357.40312423743285,
+          "service_start_time": 359.0,
+          "departure_time": 369.0,
+          "demand": 10,
+          "cumulative_load": 113,
+          "time_window_start": 359,
+          "time_window_end": 479,
+          "service_time": 10
+        },
+        {
+          "id": "customer_8",
+          "source_customer_id": 8,
+          "arrival_time": 377.6023252670426,
+          "service_start_time": 463.0,
+          "departure_time": 473.0,
+          "demand": 10,
+          "cumulative_load": 123,
+          "time_window_start": 463,
+          "time_window_end": 583,
+          "service_time": 10
+        },
+        {
+          "id": "customer_79",
+          "source_customer_id": 79,
+          "arrival_time": 488.0,
+          "service_start_time": 488.0,
+          "departure_time": 498.0,
+          "demand": 30,
+          "cumulative_load": 153,
+          "time_window_start": 478,
+          "time_window_end": 598,
+          "service_time": 10
+        },
+        {
+          "id": "customer_7",
+          "source_customer_id": 7,
+          "arrival_time": 509.40175425099136,
+          "service_start_time": 530.0,
+          "departure_time": 540.0,
+          "demand": 20,
+          "cumulative_load": 173,
+          "time_window_start": 530,
+          "time_window_end": 650,
+          "service_time": 10
+        },
+        {
+          "id": "customer_6",
+          "source_customer_id": 6,
+          "arrival_time": 543.0,
+          "service_start_time": 543.0,
+          "departure_time": 553.0,
+          "demand": 20,
+          "cumulative_load": 193,
+          "time_window_start": 442,
+          "time_window_end": 562,
+          "service_time": 10
+        },
+        {
+          "id": "customer_78",
+          "source_customer_id": 78,
+          "arrival_time": 574.4709105535838,
+          "service_start_time": 574.4709105535838,
+          "departure_time": 584.4709105535838,
+          "demand": 27,
+          "cumulative_load": 220,
+          "time_window_start": 465,
+          "time_window_end": 585,
+          "service_time": 10
+        },
+        {
+          "id": "customer_73",
+          "source_customer_id": 73,
+          "arrival_time": 591.6820131045118,
+          "service_start_time": 591.6820131045118,
+          "departure_time": 601.6820131045118,
+          "demand": 5,
+          "cumulative_load": 225,
+          "time_window_start": 544,
+          "time_window_end": 664,
+          "service_time": 10
+        },
+        {
+          "id": "customer_88",
+          "source_customer_id": 88,
+          "arrival_time": 623.7727351388863,
+          "service_start_time": 623.7727351388863,
+          "departure_time": 633.7727351388863,
+          "demand": 19,
+          "cumulative_load": 244,
+          "time_window_start": 570,
+          "time_window_end": 690,
+          "service_time": 10
+        },
+        {
+          "id": "customer_98",
+          "source_customer_id": 98,
+          "arrival_time": 640.0972904592231,
+          "service_start_time": 658.0,
+          "departure_time": 668.0,
+          "demand": 9,
+          "cumulative_load": 253,
+          "time_window_start": 658,
+          "time_window_end": 778,
+          "service_time": 10
+        },
+        {
+          "id": "customer_69",
+          "source_customer_id": 69,
+          "arrival_time": 673.0,
+          "service_start_time": 673.0,
+          "departure_time": 683.0,
+          "demand": 27,
+          "cumulative_load": 280,
+          "time_window_start": 673,
+          "time_window_end": 793,
+          "service_time": 10
+        },
+        {
+          "id": "customer_82",
+          "source_customer_id": 82,
+          "arrival_time": 692.8488578017962,
+          "service_start_time": 692.8488578017962,
+          "departure_time": 702.8488578017962,
+          "demand": 9,
+          "cumulative_load": 289,
+          "time_window_start": 678,
+          "time_window_end": 798,
+          "service_time": 10
+        },
+        {
+          "id": "customer_12",
+          "source_customer_id": 12,
+          "arrival_time": 721.953830976339,
+          "service_start_time": 721.953830976339,
+          "departure_time": 731.953830976339,
+          "demand": 20,
+          "cumulative_load": 309,
+          "time_window_start": 607,
+          "time_window_end": 727,
+          "service_time": 10
+        },
+        {
+          "id": "customer_47",
+          "source_customer_id": 47,
+          "arrival_time": 737.953830976339,
+          "service_start_time": 737.953830976339,
+          "departure_time": 747.953830976339,
+          "demand": 10,
+          "cumulative_load": 319,
+          "time_window_start": 725,
+          "time_window_end": 845,
+          "service_time": 10
+        },
+        {
+          "id": "customer_2",
+          "source_customer_id": 2,
+          "arrival_time": 784.0093437309788,
+          "service_start_time": 784.0093437309788,
+          "departure_time": 794.0093437309788,
+          "demand": 30,
+          "cumulative_load": 349,
+          "time_window_start": 678,
+          "time_window_end": 798,
+          "service_time": 10
+        },
+        {
+          "id": "customer_45",
+          "source_customer_id": 45,
+          "arrival_time": 801.2894536202593,
+          "service_start_time": 801.2894536202593,
+          "departure_time": 811.2894536202593,
+          "demand": 10,
+          "cumulative_load": 359,
+          "time_window_start": 793,
+          "time_window_end": 913,
+          "service_time": 10
+        },
+        {
+          "id": "customer_5",
+          "source_customer_id": 5,
+          "arrival_time": 814.2894536202593,
+          "service_start_time": 814.2894536202593,
+          "departure_time": 824.2894536202593,
+          "demand": 20,
+          "cumulative_load": 379,
+          "time_window_start": 757,
+          "time_window_end": 877,
+          "service_time": 10
+        },
+        {
+          "id": "customer_14",
+          "source_customer_id": 14,
+          "arrival_time": 867.009472346847,
+          "service_start_time": 867.009472346847,
+          "departure_time": 877.009472346847,
+          "demand": 10,
+          "cumulative_load": 389,
+          "time_window_start": 795,
+          "time_window_end": 915,
+          "service_time": 10
+        }
+      ]
+    },
+    {
+      "vehicle_index": 3,
+      "capacity": 1000,
+      "total_demand": 397,
+      "route_distance": 374.104503,
+      "departure_time": 0,
+      "return_time": 867.554644,
+      "stops": [
+        {
+          "id": "customer_58",
+          "source_customer_id": 58,
+          "arrival_time": 47.16990566028302,
+          "service_start_time": 48.0,
+          "departure_time": 58.0,
+          "demand": 20,
+          "cumulative_load": 20,
+          "time_window_start": 48,
+          "time_window_end": 168,
+          "service_time": 10
+        },
+        {
+          "id": "customer_77",
+          "source_customer_id": 77,
+          "arrival_time": 68.63014581273465,
+          "service_start_time": 68.63014581273465,
+          "departure_time": 78.63014581273465,
+          "demand": 7,
+          "cumulative_load": 27,
+          "time_window_start": 66,
+          "time_window_end": 186,
+          "service_time": 10
+        },
+        {
+          "id": "customer_25",
+          "source_customer_id": 25,
+          "arrival_time": 90.79567087333109,
+          "service_start_time": 90.79567087333109,
+          "departure_time": 100.79567087333109,
+          "demand": 20,
+          "cumulative_load": 47,
+          "time_window_start": 46,
+          "time_window_end": 166,
+          "service_time": 10
+        },
+        {
+          "id": "customer_48",
+          "source_customer_id": 48,
+          "arrival_time": 107.79567087333109,
+          "service_start_time": 107.79567087333109,
+          "departure_time": 117.79567087333109,
+          "demand": 10,
+          "cumulative_load": 57,
+          "time_window_start": 98,
+          "time_window_end": 218,
+          "service_time": 10
+        },
+        {
+          "id": "customer_24",
+          "source_customer_id": 24,
+          "arrival_time": 128.5660004876001,
+          "service_start_time": 149.0,
+          "departure_time": 159.0,
+          "demand": 10,
+          "cumulative_load": 67,
+          "time_window_start": 149,
+          "time_window_end": 269,
+          "service_time": 10
+        },
+        {
+          "id": "customer_74",
+          "source_customer_id": 74,
+          "arrival_time": 177.6815416922694,
+          "service_start_time": 185.0,
+          "departure_time": 195.0,
+          "demand": 8,
+          "cumulative_load": 75,
+          "time_window_start": 185,
+          "time_window_end": 305,
+          "service_time": 10
+        },
+        {
+          "id": "customer_13",
+          "source_customer_id": 13,
+          "arrival_time": 216.21320343559643,
+          "service_start_time": 216.21320343559643,
+          "departure_time": 226.21320343559643,
+          "demand": 10,
+          "cumulative_load": 85,
+          "time_window_start": 177,
+          "time_window_end": 297,
+          "service_time": 10
+        },
+        {
+          "id": "customer_97",
+          "source_customer_id": 97,
+          "arrival_time": 243.24258980152283,
+          "service_start_time": 283.0,
+          "departure_time": 293.0,
+          "demand": 35,
+          "cumulative_load": 120,
+          "time_window_start": 283,
+          "time_window_end": 403,
+          "service_time": 10
+        },
+        {
+          "id": "customer_10",
+          "source_customer_id": 10,
+          "arrival_time": 315.8035085019828,
+          "service_start_time": 315.8035085019828,
+          "departure_time": 325.8035085019828,
+          "demand": 30,
+          "cumulative_load": 150,
+          "time_window_start": 311,
+          "time_window_end": 431,
+          "service_time": 10
+        },
+        {
+          "id": "customer_9",
+          "source_customer_id": 9,
+          "arrival_time": 330.8035085019828,
+          "service_start_time": 459.0,
+          "departure_time": 469.0,
+          "demand": 20,
+          "cumulative_load": 170,
+          "time_window_start": 459,
+          "time_window_end": 579,
+          "service_time": 10
+        },
+        {
+          "id": "customer_87",
+          "source_customer_id": 87,
+          "arrival_time": 480.180339887499,
+          "service_start_time": 480.180339887499,
+          "departure_time": 490.180339887499,
+          "demand": 13,
+          "cumulative_load": 183,
+          "time_window_start": 471,
+          "time_window_end": 591,
+          "service_time": 10
+        },
+        {
+          "id": "customer_86",
+          "source_customer_id": 86,
+          "arrival_time": 499.180339887499,
+          "service_start_time": 499.180339887499,
+          "departure_time": 509.180339887499,
+          "demand": 28,
+          "cumulative_load": 211,
+          "time_window_start": 481,
+          "time_window_end": 601,
+          "service_time": 10
+        },
+        {
+          "id": "customer_57",
+          "source_customer_id": 57,
+          "arrival_time": 518.2357250256364,
+          "service_start_time": 518.2357250256364,
+          "departure_time": 528.2357250256364,
+          "demand": 23,
+          "cumulative_load": 234,
+          "time_window_start": 433,
+          "time_window_end": 553,
+          "service_time": 10
+        },
+        {
+          "id": "customer_99",
+          "source_customer_id": 99,
+          "arrival_time": 539.0060546399054,
+          "service_start_time": 539.0060546399054,
+          "departure_time": 549.0060546399054,
+          "demand": 15,
+          "cumulative_load": 249,
+          "time_window_start": 522,
+          "time_window_end": 642,
+          "service_time": 10
+        },
+        {
+          "id": "customer_11",
+          "source_customer_id": 11,
+          "arrival_time": 567.6875963321748,
+          "service_start_time": 635.0,
+          "departure_time": 645.0,
+          "demand": 40,
+          "cumulative_load": 289,
+          "time_window_start": 635,
+          "time_window_end": 755,
+          "service_time": 10
+        },
+        {
+          "id": "customer_15",
+          "source_customer_id": 15,
+          "arrival_time": 651.0,
+          "service_start_time": 656.0,
+          "departure_time": 666.0,
+          "demand": 20,
+          "cumulative_load": 309,
+          "time_window_start": 656,
+          "time_window_end": 776,
+          "service_time": 10
+        },
+        {
+          "id": "customer_16",
+          "source_customer_id": 16,
+          "arrival_time": 668.0,
+          "service_start_time": 668.0,
+          "departure_time": 678.0,
+          "demand": 20,
+          "cumulative_load": 329,
+          "time_window_start": 575,
+          "time_window_end": 695,
+          "service_time": 10
+        },
+        {
+          "id": "customer_75",
+          "source_customer_id": 75,
+          "arrival_time": 713.3553390593274,
+          "service_start_time": 713.3553390593274,
+          "departure_time": 723.3553390593274,
+          "demand": 16,
+          "cumulative_load": 345,
+          "time_window_start": 598,
+          "time_window_end": 718,
+          "service_time": 10
+        },
+        {
+          "id": "customer_52",
+          "source_customer_id": 52,
+          "arrival_time": 755.3709602464917,
+          "service_start_time": 755.3709602464917,
+          "departure_time": 765.3709602464917,
+          "demand": 3,
+          "cumulative_load": 348,
+          "time_window_start": 655,
+          "time_window_end": 775,
+          "service_time": 10
+        },
+        {
+          "id": "customer_59",
+          "source_customer_id": 59,
+          "arrival_time": 783.3987166238117,
+          "service_start_time": 788.0,
+          "departure_time": 798.0,
+          "demand": 19,
+          "cumulative_load": 367,
+          "time_window_start": 788,
+          "time_window_end": 908,
+          "service_time": 10
+        },
+        {
+          "id": "customer_83",
+          "source_customer_id": 83,
+          "arrival_time": 827.1547594742265,
+          "service_start_time": 827.1547594742265,
+          "departure_time": 837.1547594742265,
+          "demand": 14,
+          "cumulative_load": 381,
+          "time_window_start": 725,
+          "time_window_end": 845,
+          "service_time": 10
+        },
+        {
+          "id": "customer_65",
+          "source_customer_id": 65,
+          "arrival_time": 846.3743039315193,
+          "service_start_time": 846.3743039315193,
+          "departure_time": 856.3743039315193,
+          "demand": 16,
+          "cumulative_load": 397,
+          "time_window_start": 819,
+          "time_window_end": 939,
+          "service_time": 10
+        }
+      ]
+    },
+    {
+      "vehicle_index": 4,
+      "capacity": 1000,
+      "total_demand": 337,
+      "route_distance": 232.469712,
+      "departure_time": 0,
+      "return_time": 861.708411,
+      "stops": [
+        {
+          "id": "customer_80",
+          "source_customer_id": 80,
+          "arrival_time": 7.615773105863909,
+          "service_start_time": 8.0,
+          "departure_time": 18.0,
+          "demand": 13,
+          "cumulative_load": 13,
+          "time_window_start": 8,
+          "time_window_end": 128,
+          "service_time": 10
+        },
+        {
+          "id": "customer_91",
+          "source_customer_id": 91,
+          "arrival_time": 23.385164807134505,
+          "service_start_time": 111.0,
+          "departure_time": 121.0,
+          "demand": 13,
+          "cumulative_load": 26,
+          "time_window_start": 111,
+          "time_window_end": 231,
+          "service_time": 10
+        },
+        {
+          "id": "customer_56",
+          "source_customer_id": 56,
+          "arrival_time": 128.07106781186548,
+          "service_start_time": 273.0,
+          "departure_time": 283.0,
+          "demand": 19,
+          "cumulative_load": 45,
+          "time_window_start": 273,
+          "time_window_end": 393,
+          "service_time": 10
+        },
+        {
+          "id": "customer_66",
+          "source_customer_id": 66,
+          "arrival_time": 292.2195444572929,
+          "service_start_time": 292.2195444572929,
+          "departure_time": 302.2195444572929,
+          "demand": 16,
+          "cumulative_load": 61,
+          "time_window_start": 264,
+          "time_window_end": 384,
+          "service_time": 10
+        },
+        {
+          "id": "customer_20",
+          "source_customer_id": 20,
+          "arrival_time": 324.2422600028381,
+          "service_start_time": 324.2422600028381,
+          "departure_time": 334.2422600028381,
+          "demand": 10,
+          "cumulative_load": 71,
+          "time_window_start": 293,
+          "time_window_end": 413,
+          "service_time": 10
+        },
+        {
+          "id": "customer_22",
+          "source_customer_id": 22,
+          "arrival_time": 336.2422600028381,
+          "service_start_time": 455.0,
+          "departure_time": 465.0,
+          "demand": 40,
+          "cumulative_load": 111,
+          "time_window_start": 455,
+          "time_window_end": 575,
+          "service_time": 10
+        },
+        {
+          "id": "customer_49",
+          "source_customer_id": 49,
+          "arrival_time": 468.605551275464,
+          "service_start_time": 468.605551275464,
+          "departure_time": 478.605551275464,
+          "demand": 10,
+          "cumulative_load": 121,
+          "time_window_start": 390,
+          "time_window_end": 510,
+          "service_time": 10
+        },
+        {
+          "id": "customer_84",
+          "source_customer_id": 84,
+          "arrival_time": 501.2771193729733,
+          "service_start_time": 501.2771193729733,
+          "departure_time": 511.2771193729733,
+          "demand": 18,
+          "cumulative_load": 139,
+          "time_window_start": 435,
+          "time_window_end": 555,
+          "service_time": 10
+        },
+        {
+          "id": "customer_85",
+          "source_customer_id": 85,
+          "arrival_time": 519.7624007472118,
+          "service_start_time": 519.7624007472118,
+          "departure_time": 529.7624007472118,
+          "demand": 2,
+          "cumulative_load": 141,
+          "time_window_start": 486,
+          "time_window_end": 606,
+          "service_time": 10
+        },
+        {
+          "id": "customer_51",
+          "source_customer_id": 51,
+          "arrival_time": 538.3064044925294,
+          "service_start_time": 538.3064044925294,
+          "departure_time": 548.3064044925294,
+          "demand": 19,
+          "cumulative_load": 160,
+          "time_window_start": 504,
+          "time_window_end": 624,
+          "service_time": 10
+        },
+        {
+          "id": "customer_76",
+          "source_customer_id": 76,
+          "arrival_time": 557.740385624586,
+          "service_start_time": 562.0,
+          "departure_time": 572.0,
+          "demand": 31,
+          "cumulative_load": 191,
+          "time_window_start": 562,
+          "time_window_end": 682,
+          "service_time": 10
+        },
+        {
+          "id": "customer_18",
+          "source_customer_id": 18,
+          "arrival_time": 589.464249196573,
+          "service_start_time": 589.464249196573,
+          "departure_time": 599.464249196573,
+          "demand": 20,
+          "cumulative_load": 211,
+          "time_window_start": 495,
+          "time_window_end": 615,
+          "service_time": 10
+        },
+        {
+          "id": "customer_21",
+          "source_customer_id": 21,
+          "arrival_time": 603.464249196573,
+          "service_start_time": 615.0,
+          "departure_time": 625.0,
+          "demand": 10,
+          "cumulative_load": 221,
+          "time_window_start": 615,
+          "time_window_end": 735,
+          "service_time": 10
+        },
+        {
+          "id": "customer_23",
+          "source_customer_id": 23,
+          "arrival_time": 627.0,
+          "service_start_time": 629.0,
+          "departure_time": 639.0,
+          "demand": 30,
+          "cumulative_load": 251,
+          "time_window_start": 629,
+          "time_window_end": 749,
+          "service_time": 10
+        },
+        {
+          "id": "customer_19",
+          "source_customer_id": 19,
+          "arrival_time": 645.4031242374328,
+          "service_start_time": 645.4031242374328,
+          "departure_time": 655.4031242374328,
+          "demand": 40,
+          "cumulative_load": 291,
+          "time_window_start": 576,
+          "time_window_end": 696,
+          "service_time": 10
+        },
+        {
+          "id": "customer_64",
+          "source_customer_id": 64,
+          "arrival_time": 675.6268726535895,
+          "service_start_time": 675.6268726535895,
+          "departure_time": 685.6268726535895,
+          "demand": 17,
+          "cumulative_load": 308,
+          "time_window_start": 639,
+          "time_window_end": 759,
+          "service_time": 10
+        },
+        {
+          "id": "customer_62",
+          "source_customer_id": 62,
+          "arrival_time": 706.2424007816778,
+          "service_start_time": 706.2424007816778,
+          "departure_time": 716.2424007816778,
+          "demand": 3,
+          "cumulative_load": 311,
+          "time_window_start": 663,
+          "time_window_end": 783,
+          "service_time": 10
+        },
+        {
+          "id": "customer_63",
+          "source_customer_id": 63,
+          "arrival_time": 731.2424007816778,
+          "service_start_time": 791.0,
+          "departure_time": 801.0,
+          "demand": 6,
+          "cumulative_load": 317,
+          "time_window_start": 791,
+          "time_window_end": 911,
+          "service_time": 10
+        },
+        {
+          "id": "customer_95",
+          "source_customer_id": 95,
+          "arrival_time": 820.2353840616713,
+          "service_start_time": 820.2353840616713,
+          "departure_time": 830.2353840616713,
+          "demand": 6,
+          "cumulative_load": 323,
+          "time_window_start": 730,
+          "time_window_end": 850,
+          "service_time": 10
+        },
+        {
+          "id": "customer_92",
+          "source_customer_id": 92,
+          "arrival_time": 836.9435879941707,
+          "service_start_time": 836.9435879941707,
+          "departure_time": 846.9435879941707,
+          "demand": 14,
+          "cumulative_load": 337,
+          "time_window_start": 816,
+          "time_window_end": 936,
+          "service_time": 10
+        }
+      ]
+    },
+    {
+      "vehicle_index": 5,
+      "capacity": 1000,
+      "total_demand": 251,
+      "route_distance": 272.311285,
+      "departure_time": 0,
+      "return_time": 811.478151,
+      "stops": [
+        {
+          "id": "customer_89",
+          "source_customer_id": 89,
+          "arrival_time": 52.478567053607705,
+          "service_start_time": 117.0,
+          "departure_time": 127.0,
+          "demand": 25,
+          "cumulative_load": 25,
+          "time_window_start": 117,
+          "time_window_end": 237,
+          "service_time": 10
+        },
+        {
+          "id": "customer_32",
+          "source_customer_id": 32,
+          "arrival_time": 159.01562118716424,
+          "service_start_time": 209.0,
+          "departure_time": 219.0,
+          "demand": 10,
+          "cumulative_load": 35,
+          "time_window_start": 209,
+          "time_window_end": 329,
+          "service_time": 10
+        },
+        {
+          "id": "customer_26",
+          "source_customer_id": 26,
+          "arrival_time": 227.0,
+          "service_start_time": 301.0,
+          "departure_time": 311.0,
+          "demand": 30,
+          "cumulative_load": 65,
+          "time_window_start": 301,
+          "time_window_end": 421,
+          "service_time": 10
+        },
+        {
+          "id": "customer_34",
+          "source_customer_id": 34,
+          "arrival_time": 322.180339887499,
+          "service_start_time": 343.0,
+          "departure_time": 353.0,
+          "demand": 30,
+          "cumulative_load": 95,
+          "time_window_start": 343,
+          "time_window_end": 463,
+          "service_time": 10
+        },
+        {
+          "id": "customer_50",
+          "source_customer_id": 50,
+          "arrival_time": 366.0,
+          "service_start_time": 366.0,
+          "departure_time": 376.0,
+          "demand": 30,
+          "cumulative_load": 125,
+          "time_window_start": 323,
+          "time_window_end": 443,
+          "service_time": 10
+        },
+        {
+          "id": "customer_94",
+          "source_customer_id": 94,
+          "arrival_time": 395.8494332412792,
+          "service_start_time": 438.0,
+          "departure_time": 448.0,
+          "demand": 23,
+          "cumulative_load": 148,
+          "time_window_start": 438,
+          "time_window_end": 558,
+          "service_time": 10
+        },
+        {
+          "id": "customer_67",
+          "source_customer_id": 67,
+          "arrival_time": 457.2195444572929,
+          "service_start_time": 562.0,
+          "departure_time": 572.0,
+          "demand": 9,
+          "cumulative_load": 157,
+          "time_window_start": 562,
+          "time_window_end": 682,
+          "service_time": 10
+        },
+        {
+          "id": "customer_71",
+          "source_customer_id": 71,
+          "arrival_time": 585.0384048104053,
+          "service_start_time": 589.0,
+          "departure_time": 599.0,
+          "demand": 14,
+          "cumulative_load": 171,
+          "time_window_start": 589,
+          "time_window_end": 709,
+          "service_time": 10
+        },
+        {
+          "id": "customer_29",
+          "source_customer_id": 29,
+          "arrival_time": 631.0156211871642,
+          "service_start_time": 636.0,
+          "departure_time": 646.0,
+          "demand": 10,
+          "cumulative_load": 181,
+          "time_window_start": 636,
+          "time_window_end": 756,
+          "service_time": 10
+        },
+        {
+          "id": "customer_31",
+          "source_customer_id": 31,
+          "arrival_time": 648.0,
+          "service_start_time": 665.0,
+          "departure_time": 675.0,
+          "demand": 20,
+          "cumulative_load": 201,
+          "time_window_start": 665,
+          "time_window_end": 785,
+          "service_time": 10
+        },
+        {
+          "id": "customer_30",
+          "source_customer_id": 30,
+          "arrival_time": 680.0,
+          "service_start_time": 680.0,
+          "departure_time": 690.0,
+          "demand": 10,
+          "cumulative_load": 211,
+          "time_window_start": 584,
+          "time_window_end": 704,
+          "service_time": 10
+        },
+        {
+          "id": "customer_27",
+          "source_customer_id": 27,
+          "arrival_time": 698.6023252670426,
+          "service_start_time": 698.6023252670426,
+          "departure_time": 708.6023252670426,
+          "demand": 20,
+          "cumulative_load": 231,
+          "time_window_start": 684,
+          "time_window_end": 804,
+          "service_time": 10
+        },
+        {
+          "id": "customer_28",
+          "source_customer_id": 28,
+          "arrival_time": 714.4332771618879,
+          "service_start_time": 714.4332771618879,
+          "departure_time": 724.4332771618879,
+          "demand": 10,
+          "cumulative_load": 241,
+          "time_window_start": 681,
+          "time_window_end": 801,
+          "service_time": 10
+        },
+        {
+          "id": "customer_33",
+          "source_customer_id": 33,
+          "arrival_time": 733.0356024289305,
+          "service_start_time": 750.0,
+          "departure_time": 760.0,
+          "demand": 10,
+          "cumulative_load": 251,
+          "time_window_start": 750,
+          "time_window_end": 870,
+          "service_time": 10
+        }
+      ]
+    }
+  ]
+}
