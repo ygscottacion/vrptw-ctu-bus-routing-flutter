@@ -4,20 +4,20 @@
   "seed": 101,
   "is_feasible": true,
   "vehicles_used": 4,
-  "total_distance": 664.956901,
-  "total_travel_time": 664.956901,
+  "total_distance": 691.499836,
+  "total_travel_time": 691.499836,
   "total_service_time": 9000.0,
   "capacity_violations": 0,
   "time_window_violations": 0,
   "depot_window_violations": 0,
   "fleet_violations": 0,
-  "runtime_seconds": 5.230839,
+  "runtime_seconds": 2.134173,
   "budget": {
-    "max_iterations": 10000,
-    "max_runtime_seconds": 5.0,
-    "iterations_completed": 28,
-    "evaluations_completed": 29,
-    "stop_reason": "time_limit"
+    "max_iterations": 10,
+    "max_runtime_seconds": 30,
+    "iterations_completed": 10,
+    "evaluations_completed": 11,
+    "stop_reason": "max_iterations"
   },
   "initial_sweep": {
     "is_feasible": true,
@@ -27,30 +27,30 @@
   "operator_statistics": {
     "destroy": {
       "random_removal": {
-        "usage_count": 6,
-        "final_weight": 1.2333333333333334
+        "usage_count": 2,
+        "final_weight": 1.0
       },
       "worst_removal": {
-        "usage_count": 8,
-        "final_weight": 1.8
+        "usage_count": 2,
+        "final_weight": 1.0
       },
       "related_removal": {
-        "usage_count": 8,
-        "final_weight": 1.2000000000000002
+        "usage_count": 2,
+        "final_weight": 1.0
       },
       "route_removal": {
-        "usage_count": 6,
-        "final_weight": 1.28
+        "usage_count": 4,
+        "final_weight": 1.0
       }
     },
     "repair": {
       "greedy_insertion": {
-        "usage_count": 12,
-        "final_weight": 1.2545454545454546
+        "usage_count": 4,
+        "final_weight": 1.0
       },
       "regret_2_insertion": {
-        "usage_count": 16,
-        "final_weight": 1.5
+        "usage_count": 6,
+        "final_weight": 1.0
       }
     }
   },
@@ -58,8 +58,8 @@
     {
       "vehicle_index": 1,
       "capacity": 700,
-      "total_demand": 490,
-      "route_distance": 180.254056,
+      "total_demand": 450,
+      "route_distance": 192.242142,
       "departure_time": 0,
       "return_time": 3310.890591,
       "stops": [
@@ -100,49 +100,13 @@
           "service_time": 90
         },
         {
-          "id": "customer_9",
-          "source_customer_id": 9,
-          "arrival_time": 539.1538303421637,
-          "service_start_time": 539.1538303421637,
-          "departure_time": 629.1538303421637,
-          "demand": 10,
-          "cumulative_load": 50,
-          "time_window_start": 539,
-          "time_window_end": 699,
-          "service_time": 90
-        },
-        {
-          "id": "customer_13",
-          "source_customer_id": 13,
-          "arrival_time": 636.9640800180704,
-          "service_start_time": 735.0,
-          "departure_time": 825.0,
-          "demand": 30,
-          "cumulative_load": 80,
-          "time_window_start": 735,
-          "time_window_end": 895,
-          "service_time": 90
-        },
-        {
-          "id": "customer_15",
-          "source_customer_id": 15,
-          "arrival_time": 830.3851648071345,
-          "service_start_time": 924.0,
-          "departure_time": 1014.0,
-          "demand": 40,
-          "cumulative_load": 120,
-          "time_window_start": 924,
-          "time_window_end": 1084,
-          "service_time": 90
-        },
-        {
           "id": "customer_12",
           "source_customer_id": 12,
-          "arrival_time": 1021.0710678118655,
-          "service_start_time": 1021.0710678118655,
-          "departure_time": 1111.0710678118655,
+          "arrival_time": 550.9507247944114,
+          "service_start_time": 1021.0,
+          "departure_time": 1111.0,
           "demand": 20,
-          "cumulative_load": 140,
+          "cumulative_load": 60,
           "time_window_start": 1021,
           "time_window_end": 1181,
           "service_time": 90
@@ -150,11 +114,11 @@
         {
           "id": "customer_14",
           "source_customer_id": 14,
-          "arrival_time": 1114.0710678118655,
-          "service_start_time": 1114.0710678118655,
-          "departure_time": 1204.0710678118655,
+          "arrival_time": 1114.0,
+          "service_start_time": 1114.0,
+          "departure_time": 1204.0,
           "demand": 10,
-          "cumulative_load": 150,
+          "cumulative_load": 70,
           "time_window_start": 1114,
           "time_window_end": 1274,
           "service_time": 90
@@ -162,23 +126,47 @@
         {
           "id": "customer_16",
           "source_customer_id": 16,
-          "arrival_time": 1206.0710678118655,
-          "service_start_time": 1206.0710678118655,
-          "departure_time": 1296.0710678118655,
+          "arrival_time": 1206.0,
+          "service_start_time": 1206.0,
+          "departure_time": 1296.0,
           "demand": 40,
-          "cumulative_load": 190,
+          "cumulative_load": 110,
           "time_window_start": 1206,
           "time_window_end": 1366,
           "service_time": 90
         },
         {
+          "id": "customer_88",
+          "source_customer_id": 88,
+          "arrival_time": 1347.478150704935,
+          "service_start_time": 1594.0,
+          "departure_time": 1684.0,
+          "demand": 30,
+          "cumulative_load": 140,
+          "time_window_start": 1594,
+          "time_window_end": 1754,
+          "service_time": 90
+        },
+        {
+          "id": "customer_91",
+          "source_customer_id": 91,
+          "arrival_time": 1689.0,
+          "service_start_time": 1689.0,
+          "departure_time": 1779.0,
+          "demand": 10,
+          "cumulative_load": 150,
+          "time_window_start": 1689,
+          "time_window_end": 1849,
+          "service_time": 90
+        },
+        {
           "id": "customer_89",
           "source_customer_id": 89,
-          "arrival_time": 1337.7483997802149,
+          "arrival_time": 1784.6568542494924,
           "service_start_time": 1785.0,
           "departure_time": 1875.0,
           "demand": 10,
-          "cumulative_load": 200,
+          "cumulative_load": 160,
           "time_window_start": 1785,
           "time_window_end": 1945,
           "service_time": 90
@@ -190,7 +178,7 @@
           "service_start_time": 1879.4721359549997,
           "departure_time": 1969.4721359549997,
           "demand": 10,
-          "cumulative_load": 210,
+          "cumulative_load": 170,
           "time_window_start": 1879,
           "time_window_end": 2039,
           "service_time": 90
@@ -202,7 +190,7 @@
           "service_start_time": 1973.0776872304637,
           "departure_time": 2063.0776872304637,
           "demand": 10,
-          "cumulative_load": 220,
+          "cumulative_load": 180,
           "time_window_start": 1973,
           "time_window_end": 2133,
           "service_time": 90
@@ -214,7 +202,7 @@
           "service_start_time": 2067.2007928560815,
           "departure_time": 2157.2007928560815,
           "demand": 20,
-          "cumulative_load": 240,
+          "cumulative_load": 200,
           "time_window_start": 2067,
           "time_window_end": 2227,
           "service_time": 90
@@ -226,7 +214,7 @@
           "service_start_time": 2162.2007928560815,
           "departure_time": 2252.2007928560815,
           "demand": 20,
-          "cumulative_load": 260,
+          "cumulative_load": 220,
           "time_window_start": 2162,
           "time_window_end": 2322,
           "service_time": 90
@@ -238,7 +226,7 @@
           "service_start_time": 2259.0,
           "departure_time": 2349.0,
           "demand": 30,
-          "cumulative_load": 290,
+          "cumulative_load": 250,
           "time_window_start": 2259,
           "time_window_end": 2419,
           "service_time": 90
@@ -250,7 +238,7 @@
           "service_start_time": 2352.6055512754638,
           "departure_time": 2442.6055512754638,
           "demand": 10,
-          "cumulative_load": 300,
+          "cumulative_load": 260,
           "time_window_start": 2352,
           "time_window_end": 2512,
           "service_time": 90
@@ -262,7 +250,7 @@
           "service_start_time": 2446.2111025509275,
           "departure_time": 2536.2111025509275,
           "demand": 20,
-          "cumulative_load": 320,
+          "cumulative_load": 280,
           "time_window_start": 2446,
           "time_window_end": 2606,
           "service_time": 90
@@ -274,7 +262,7 @@
           "service_start_time": 2543.2111025509275,
           "departure_time": 2633.2111025509275,
           "demand": 30,
-          "cumulative_load": 350,
+          "cumulative_load": 310,
           "time_window_start": 2543,
           "time_window_end": 2703,
           "service_time": 90
@@ -286,7 +274,7 @@
           "service_start_time": 2638.2111025509275,
           "departure_time": 2728.2111025509275,
           "demand": 20,
-          "cumulative_load": 370,
+          "cumulative_load": 330,
           "time_window_start": 2638,
           "time_window_end": 2798,
           "service_time": 90
@@ -298,7 +286,7 @@
           "service_start_time": 2733.2111025509275,
           "departure_time": 2823.2111025509275,
           "demand": 10,
-          "cumulative_load": 380,
+          "cumulative_load": 340,
           "time_window_start": 2733,
           "time_window_end": 2893,
           "service_time": 90
@@ -310,7 +298,7 @@
           "service_start_time": 2829.042054445773,
           "departure_time": 2919.042054445773,
           "demand": 10,
-          "cumulative_load": 390,
+          "cumulative_load": 350,
           "time_window_start": 2829,
           "time_window_end": 2989,
           "service_time": 90
@@ -322,7 +310,7 @@
           "service_start_time": 2927.6443797128154,
           "departure_time": 3017.6443797128154,
           "demand": 30,
-          "cumulative_load": 420,
+          "cumulative_load": 380,
           "time_window_start": 2927,
           "time_window_end": 3087,
           "service_time": 90
@@ -334,7 +322,7 @@
           "service_start_time": 3022.6443797128154,
           "departure_time": 3112.6443797128154,
           "demand": 20,
-          "cumulative_load": 440,
+          "cumulative_load": 400,
           "time_window_start": 3022,
           "time_window_end": 3182,
           "service_time": 90
@@ -346,7 +334,7 @@
           "service_start_time": 3115.6443797128154,
           "departure_time": 3205.6443797128154,
           "demand": 10,
-          "cumulative_load": 450,
+          "cumulative_load": 410,
           "time_window_start": 3115,
           "time_window_end": 3275,
           "service_time": 90
@@ -358,7 +346,7 @@
           "service_start_time": 3212.6443797128154,
           "departure_time": 3302.6443797128154,
           "demand": 40,
-          "cumulative_load": 490,
+          "cumulative_load": 450,
           "time_window_start": 3132,
           "time_window_end": 3292,
           "service_time": 90
@@ -368,8 +356,8 @@
     {
       "vehicle_index": 2,
       "capacity": 700,
-      "total_demand": 440,
-      "route_distance": 157.237027,
+      "total_demand": 520,
+      "route_distance": 173.489372,
       "departure_time": 0,
       "return_time": 3310.98999,
       "stops": [
@@ -386,37 +374,73 @@
           "service_time": 90
         },
         {
+          "id": "customer_9",
+          "source_customer_id": 9,
+          "arrival_time": 261.14213562373095,
+          "service_start_time": 539.0,
+          "departure_time": 629.0,
+          "demand": 10,
+          "cumulative_load": 30,
+          "time_window_start": 539,
+          "time_window_end": 699,
+          "service_time": 90
+        },
+        {
           "id": "customer_25",
           "source_customer_id": 25,
-          "arrival_time": 259.8062484748657,
-          "service_start_time": 636.0,
-          "departure_time": 726.0,
+          "arrival_time": 636.211102550928,
+          "service_start_time": 636.211102550928,
+          "departure_time": 726.211102550928,
           "demand": 40,
-          "cumulative_load": 60,
+          "cumulative_load": 70,
           "time_window_start": 636,
           "time_window_end": 796,
           "service_time": 90
         },
         {
+          "id": "customer_13",
+          "source_customer_id": 13,
+          "arrival_time": 735.211102550928,
+          "service_start_time": 735.211102550928,
+          "departure_time": 825.211102550928,
+          "demand": 30,
+          "cumulative_load": 100,
+          "time_window_start": 735,
+          "time_window_end": 895,
+          "service_time": 90
+        },
+        {
           "id": "customer_17",
           "source_customer_id": 17,
-          "arrival_time": 735.8488578017962,
-          "service_start_time": 829.0,
-          "departure_time": 919.0,
+          "arrival_time": 829.211102550928,
+          "service_start_time": 829.211102550928,
+          "departure_time": 919.211102550928,
           "demand": 20,
-          "cumulative_load": 80,
+          "cumulative_load": 120,
           "time_window_start": 829,
           "time_window_end": 989,
           "service_time": 90
         },
         {
+          "id": "customer_15",
+          "source_customer_id": 15,
+          "arrival_time": 924.5962673580625,
+          "service_start_time": 924.5962673580625,
+          "departure_time": 1014.5962673580625,
+          "demand": 40,
+          "cumulative_load": 160,
+          "time_window_start": 924,
+          "time_window_end": 1084,
+          "service_time": 90
+        },
+        {
           "id": "customer_19",
           "source_customer_id": 19,
-          "arrival_time": 924.8309518948453,
+          "arrival_time": 1019.5962673580625,
           "service_start_time": 1303.0,
           "departure_time": 1393.0,
           "demand": 10,
-          "cumulative_load": 90,
+          "cumulative_load": 170,
           "time_window_start": 1303,
           "time_window_end": 1463,
           "service_time": 90
@@ -428,7 +452,7 @@
           "service_start_time": 1398.0,
           "departure_time": 1488.0,
           "demand": 20,
-          "cumulative_load": 110,
+          "cumulative_load": 190,
           "time_window_start": 1398,
           "time_window_end": 1558,
           "service_time": 90
@@ -440,7 +464,7 @@
           "service_start_time": 1497.0553851381374,
           "departure_time": 1587.0553851381374,
           "demand": 10,
-          "cumulative_load": 120,
+          "cumulative_load": 200,
           "time_window_start": 1497,
           "time_window_end": 1657,
           "service_time": 90
@@ -452,7 +476,7 @@
           "service_start_time": 1595.0,
           "departure_time": 1685.0,
           "demand": 10,
-          "cumulative_load": 130,
+          "cumulative_load": 210,
           "time_window_start": 1595,
           "time_window_end": 1755,
           "service_time": 90
@@ -464,7 +488,7 @@
           "service_start_time": 1693.0622577482986,
           "departure_time": 1783.0622577482986,
           "demand": 20,
-          "cumulative_load": 150,
+          "cumulative_load": 230,
           "time_window_start": 1693,
           "time_window_end": 1853,
           "service_time": 90
@@ -476,7 +500,7 @@
           "service_start_time": 1794.0,
           "departure_time": 1884.0,
           "demand": 20,
-          "cumulative_load": 170,
+          "cumulative_load": 250,
           "time_window_start": 1794,
           "time_window_end": 1954,
           "service_time": 90
@@ -488,7 +512,7 @@
           "service_start_time": 1887.0,
           "departure_time": 1977.0,
           "demand": 10,
-          "cumulative_load": 180,
+          "cumulative_load": 260,
           "time_window_start": 1887,
           "time_window_end": 2047,
           "service_time": 90
@@ -500,7 +524,7 @@
           "service_start_time": 1982.0,
           "departure_time": 2072.0,
           "demand": 20,
-          "cumulative_load": 200,
+          "cumulative_load": 280,
           "time_window_start": 1982,
           "time_window_end": 2142,
           "service_time": 90
@@ -512,7 +536,7 @@
           "service_start_time": 2077.0,
           "departure_time": 2167.0,
           "demand": 30,
-          "cumulative_load": 230,
+          "cumulative_load": 310,
           "time_window_start": 2077,
           "time_window_end": 2237,
           "service_time": 90
@@ -524,7 +548,7 @@
           "service_start_time": 2169.0,
           "departure_time": 2259.0,
           "demand": 20,
-          "cumulative_load": 250,
+          "cumulative_load": 330,
           "time_window_start": 2169,
           "time_window_end": 2329,
           "service_time": 90
@@ -536,7 +560,7 @@
           "service_start_time": 2264.8309518948454,
           "departure_time": 2354.8309518948454,
           "demand": 10,
-          "cumulative_load": 260,
+          "cumulative_load": 340,
           "time_window_start": 2264,
           "time_window_end": 2424,
           "service_time": 90
@@ -548,7 +572,7 @@
           "service_start_time": 2359.8309518948454,
           "departure_time": 2449.8309518948454,
           "demand": 20,
-          "cumulative_load": 280,
+          "cumulative_load": 360,
           "time_window_start": 2359,
           "time_window_end": 2519,
           "service_time": 90
@@ -560,7 +584,7 @@
           "service_start_time": 2455.21611670198,
           "departure_time": 2545.21611670198,
           "demand": 40,
-          "cumulative_load": 320,
+          "cumulative_load": 400,
           "time_window_start": 2455,
           "time_window_end": 2615,
           "service_time": 90
@@ -572,7 +596,7 @@
           "service_start_time": 2547.21611670198,
           "departure_time": 2637.21611670198,
           "demand": 30,
-          "cumulative_load": 350,
+          "cumulative_load": 430,
           "time_window_start": 2547,
           "time_window_end": 2707,
           "service_time": 90
@@ -584,7 +608,7 @@
           "service_start_time": 2643.540672022317,
           "departure_time": 2733.540672022317,
           "demand": 20,
-          "cumulative_load": 370,
+          "cumulative_load": 450,
           "time_window_start": 2643,
           "time_window_end": 2803,
           "service_time": 90
@@ -596,7 +620,7 @@
           "service_start_time": 2742.484943932316,
           "departure_time": 2832.484943932316,
           "demand": 10,
-          "cumulative_load": 380,
+          "cumulative_load": 460,
           "time_window_start": 2742,
           "time_window_end": 2902,
           "service_time": 90
@@ -608,7 +632,7 @@
           "service_start_time": 2837.484943932316,
           "departure_time": 2927.484943932316,
           "demand": 10,
-          "cumulative_load": 390,
+          "cumulative_load": 470,
           "time_window_start": 2837,
           "time_window_end": 2997,
           "service_time": 90
@@ -620,7 +644,7 @@
           "service_start_time": 2931.727584619435,
           "departure_time": 3021.727584619435,
           "demand": 10,
-          "cumulative_load": 400,
+          "cumulative_load": 480,
           "time_window_start": 2931,
           "time_window_end": 3091,
           "service_time": 90
@@ -632,7 +656,7 @@
           "service_start_time": 3024.5560117441814,
           "departure_time": 3114.5560117441814,
           "demand": 10,
-          "cumulative_load": 410,
+          "cumulative_load": 490,
           "time_window_start": 3024,
           "time_window_end": 3184,
           "service_time": 90
@@ -644,7 +668,7 @@
           "service_start_time": 3118.161563019645,
           "departure_time": 3208.161563019645,
           "demand": 20,
-          "cumulative_load": 430,
+          "cumulative_load": 510,
           "time_window_start": 3118,
           "time_window_end": 3278,
           "service_time": 90
@@ -656,7 +680,7 @@
           "service_start_time": 3210.9899901443914,
           "departure_time": 3300.9899901443914,
           "demand": 10,
-          "cumulative_load": 440,
+          "cumulative_load": 520,
           "time_window_start": 3130,
           "time_window_end": 3290,
           "service_time": 90
@@ -1060,10 +1084,10 @@
     {
       "vehicle_index": 4,
       "capacity": 700,
-      "total_demand": 320,
-      "route_distance": 169.417726,
+      "total_demand": 280,
+      "route_distance": 167.720231,
       "departure_time": 0,
-      "return_time": 1879.802198,
+      "return_time": 1698.104703,
       "stops": [
         {
           "id": "customer_90",
@@ -1267,30 +1291,6 @@
           "cumulative_load": 280,
           "time_window_start": 1499,
           "time_window_end": 1659,
-          "service_time": 90
-        },
-        {
-          "id": "customer_88",
-          "source_customer_id": 88,
-          "arrival_time": 1672.4415179552989,
-          "service_start_time": 1672.4415179552989,
-          "departure_time": 1762.4415179552989,
-          "demand": 30,
-          "cumulative_load": 310,
-          "time_window_start": 1594,
-          "time_window_end": 1754,
-          "service_time": 90
-        },
-        {
-          "id": "customer_91",
-          "source_customer_id": 91,
-          "arrival_time": 1767.4415179552989,
-          "service_start_time": 1767.4415179552989,
-          "departure_time": 1857.4415179552989,
-          "demand": 10,
-          "cumulative_load": 320,
-          "time_window_start": 1689,
-          "time_window_end": 1849,
           "service_time": 90
         }
       ]

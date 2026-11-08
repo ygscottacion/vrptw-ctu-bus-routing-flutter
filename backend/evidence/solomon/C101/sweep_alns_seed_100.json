@@ -11,13 +11,13 @@
   "time_window_violations": 0,
   "depot_window_violations": 0,
   "fleet_violations": 0,
-  "runtime_seconds": 5.143919,
+  "runtime_seconds": 1.559211,
   "budget": {
-    "max_iterations": 10000,
-    "max_runtime_seconds": 5.0,
-    "iterations_completed": 69,
-    "evaluations_completed": 70,
-    "stop_reason": "time_limit"
+    "max_iterations": 15,
+    "max_runtime_seconds": 30,
+    "iterations_completed": 15,
+    "evaluations_completed": 16,
+    "stop_reason": "max_iterations"
   },
   "initial_sweep": {
     "is_feasible": true,
@@ -27,30 +27,30 @@
   "operator_statistics": {
     "destroy": {
       "random_removal": {
-        "usage_count": 24,
-        "final_weight": 1.1906666666666668
+        "usage_count": 2,
+        "final_weight": 1.0
       },
       "worst_removal": {
-        "usage_count": 14,
-        "final_weight": 0.9466666666666668
+        "usage_count": 3,
+        "final_weight": 1.0
       },
       "related_removal": {
-        "usage_count": 15,
-        "final_weight": 0.9314285714285715
+        "usage_count": 4,
+        "final_weight": 1.0
       },
       "route_removal": {
-        "usage_count": 16,
-        "final_weight": 1.0933333333333335
+        "usage_count": 6,
+        "final_weight": 1.0
       }
     },
     "repair": {
       "greedy_insertion": {
-        "usage_count": 41,
-        "final_weight": 0.958190045248869
+        "usage_count": 9,
+        "final_weight": 1.0
       },
       "regret_2_insertion": {
-        "usage_count": 28,
-        "final_weight": 1.1400000000000001
+        "usage_count": 6,
+        "final_weight": 1.0
       }
     }
   },

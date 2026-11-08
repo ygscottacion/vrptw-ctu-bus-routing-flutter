@@ -11,33 +11,33 @@
   "time_window_violations": 0,
   "depot_window_violations": 0,
   "fleet_violations": 0,
-  "runtime_seconds": 5.005731,
+  "runtime_seconds": 0.539965,
   "initial_sweep": {
     "is_feasible": true,
     "vehicles_used": 4,
     "total_distance": 1103.280546914581
   },
   "budget": {
-    "max_iterations": 10000,
-    "max_runtime_seconds": 5.0,
-    "iterations_completed": 25,
-    "evaluations_completed": 12200,
-    "stop_reason": "time_limit"
+    "max_iterations": 2,
+    "max_runtime_seconds": 30,
+    "iterations_completed": 2,
+    "evaluations_completed": 1001,
+    "stop_reason": "max_iterations"
   },
   "tabu_diagnostics": {
     "base_tenure": 10,
     "dynamic_tenure_enabled": true,
     "aspiration_enabled": true,
     "diversification_enabled": true,
-    "diversification_count": 1,
+    "diversification_count": 0,
     "candidates_per_iteration": 500,
     "candidate_counts": {
-      "2opt": 910,
-      "swap": 3633,
-      "relocate": 7656
+      "2opt": 73,
+      "swap": 311,
+      "relocate": 616
     },
-    "feasible_candidates_evaluated": 144,
-    "infeasible_candidates_evaluated": 12055,
+    "feasible_candidates_evaluated": 11,
+    "infeasible_candidates_evaluated": 989,
     "improving_candidates_found": 1,
     "best_distance_by_iteration": [
       {
