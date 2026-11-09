@@ -1,0 +1,453 @@
+{
+  "benchmark": "standalone CTU Tabu versus ALNS versus GVNS",
+  "note": "No database reads/writes; no student or ticket identifiers are used.",
+  "objective": "Production pickup SolutionEvaluator Z weights and penalties",
+  "scenarios": [
+    {
+      "name": "CTU-Low",
+      "service_date": "2026-11-09",
+      "session_id": "MORNING_1",
+      "trip_type": "PICKUP",
+      "station_count": 6,
+      "ticket_count": 24,
+      "depot": {
+        "location_id": "1962227a-0153-4ea6-9051-59cc7194c32c",
+        "latitude": 10.0282,
+        "longitude": 105.7682
+      },
+      "vehicles": [
+        {
+          "id": "vehicle_1",
+          "database_capacity": 30,
+          "effective_capacity": 29
+        },
+        {
+          "id": "vehicle_2",
+          "database_capacity": 30,
+          "effective_capacity": 29
+        },
+        {
+          "id": "vehicle_3",
+          "database_capacity": 30,
+          "effective_capacity": 29
+        }
+      ],
+      "stations": [
+        {
+          "location_id": "040a181f-47a2-48d9-ac88-7fdb9fcde4b8",
+          "location_code": "LOC-04",
+          "lat": 10.024814,
+          "lng": 105.767565,
+          "demand": 5,
+          "time_window_start": "06:01",
+          "time_window_end": "06:46",
+          "radius_km": 0.383
+        },
+        {
+          "location_id": "ecdbfc40-6060-417c-827a-f14d45bfbb5f",
+          "location_code": "LOC-05",
+          "lat": 10.034498,
+          "lng": 105.755812,
+          "demand": 5,
+          "time_window_start": "05:58",
+          "time_window_end": "06:43",
+          "radius_km": 1.527
+        },
+        {
+          "location_id": "2e1fea7c-167a-4225-aca3-c2c32e9dd6b2",
+          "location_code": "LOC-06",
+          "lat": 10.030945,
+          "lng": 105.781573,
+          "demand": 4,
+          "time_window_start": "05:58",
+          "time_window_end": "06:43",
+          "radius_km": 1.496
+        },
+        {
+          "location_id": "0d903c1d-1f69-45d4-a3a2-abda7d5b7624",
+          "location_code": "LOC-08",
+          "lat": 10.02480669983,
+          "lng": 105.774475021185,
+          "demand": 4,
+          "time_window_start": "06:00",
+          "time_window_end": "06:45",
+          "radius_km": 0.784
+        },
+        {
+          "location_id": "90e66df6-f68d-4576-92eb-0ae757236ff4",
+          "location_code": "LOC-12",
+          "lat": 10.0322030951477,
+          "lng": 105.782015929596,
+          "demand": 3,
+          "time_window_start": "05:58",
+          "time_window_end": "06:43",
+          "radius_km": 1.577
+        },
+        {
+          "location_id": "9914fc16-6de1-4d73-91ad-7bcf9abd7985",
+          "location_code": "LOC-18",
+          "lat": 10.0218333103195,
+          "lng": 105.760929763349,
+          "demand": 3,
+          "time_window_start": "05:59",
+          "time_window_end": "06:44",
+          "radius_km": 1.065
+        }
+      ],
+      "distance_model": "Haversine at 25 km/h morning speed; no road/traffic API",
+      "time_window_model": "Same session-derived pickup windows as production backend",
+      "production_capacity_limit": 29,
+      "sweep_initial": {
+        "objective_value": 20.59,
+        "total_distance_km": 8.381,
+        "total_travel_time_min": 20.12,
+        "early_arrival_min": 24.41,
+        "late_arrival_min": 0.0,
+        "time_window_violations": 0,
+        "capacity_violations": 0,
+        "route_duration_violations": 0,
+        "school_arrival_violations": 0,
+        "fleet_violations": 0,
+        "vehicles_used": 1,
+        "is_feasible": true,
+        "routes": [
+          {
+            "station_codes": [
+              "LOC-06",
+              "LOC-12",
+              "LOC-05",
+              "LOC-18",
+              "LOC-04",
+              "LOC-08"
+            ],
+            "passenger_count": 24,
+            "drive_minutes": 20.12,
+            "distance_km": 8.381,
+            "school_arrival": "06:32"
+          }
+        ]
+      },
+      "time_budget_seconds": 5.0,
+      "tabu": {
+        "runs": 1,
+        "runtime_ms_mean": 5000.06,
+        "objective_mean": 19.47,
+        "objective_stddev": 0.0,
+        "best_run": {
+          "seed": 101,
+          "runtime_ms": 5000.06,
+          "objective_value": 19.47,
+          "total_distance_km": 7.358,
+          "total_travel_time_min": 17.66,
+          "early_arrival_min": 24.22,
+          "late_arrival_min": 0.0,
+          "time_window_violations": 0,
+          "capacity_violations": 0,
+          "route_duration_violations": 0,
+          "school_arrival_violations": 0,
+          "fleet_violations": 0,
+          "vehicles_used": 1,
+          "is_feasible": true,
+          "routes": [
+            {
+              "station_codes": [
+                "LOC-12",
+                "LOC-06",
+                "LOC-08",
+                "LOC-04",
+                "LOC-18",
+                "LOC-05"
+              ],
+              "passenger_count": 24,
+              "drive_minutes": 17.66,
+              "distance_km": 7.358,
+              "school_arrival": "06:29"
+            }
+          ],
+          "diagnostics": {
+            "iterations_completed": 2787,
+            "evaluations_completed": 153239,
+            "stop_reason": "time_limit",
+            "candidates_per_iteration": 120
+          }
+        },
+        "all_runs": [
+          {
+            "seed": 101,
+            "runtime_ms": 5000.06,
+            "objective_value": 19.47,
+            "total_distance_km": 7.358,
+            "total_travel_time_min": 17.66,
+            "early_arrival_min": 24.22,
+            "late_arrival_min": 0.0,
+            "time_window_violations": 0,
+            "capacity_violations": 0,
+            "route_duration_violations": 0,
+            "school_arrival_violations": 0,
+            "fleet_violations": 0,
+            "vehicles_used": 1,
+            "is_feasible": true,
+            "routes": [
+              {
+                "station_codes": [
+                  "LOC-12",
+                  "LOC-06",
+                  "LOC-08",
+                  "LOC-04",
+                  "LOC-18",
+                  "LOC-05"
+                ],
+                "passenger_count": 24,
+                "drive_minutes": 17.66,
+                "distance_km": 7.358,
+                "school_arrival": "06:29"
+              }
+            ],
+            "diagnostics": {
+              "iterations_completed": 2787,
+              "evaluations_completed": 153239,
+              "stop_reason": "time_limit",
+              "candidates_per_iteration": 120
+            }
+          }
+        ]
+      },
+      "alns": {
+        "runs": 1,
+        "runtime_ms_mean": 5000.21,
+        "objective_mean": 19.47,
+        "objective_stddev": 0.0,
+        "best_run": {
+          "seed": 101,
+          "runtime_ms": 5000.21,
+          "objective_value": 19.47,
+          "total_distance_km": 7.358,
+          "total_travel_time_min": 17.66,
+          "early_arrival_min": 24.22,
+          "late_arrival_min": 0.0,
+          "time_window_violations": 0,
+          "capacity_violations": 0,
+          "route_duration_violations": 0,
+          "school_arrival_violations": 0,
+          "fleet_violations": 0,
+          "vehicles_used": 1,
+          "is_feasible": true,
+          "routes": [
+            {
+              "station_codes": [
+                "LOC-12",
+                "LOC-06",
+                "LOC-08",
+                "LOC-04",
+                "LOC-18",
+                "LOC-05"
+              ],
+              "passenger_count": 24,
+              "drive_minutes": 17.66,
+              "distance_km": 7.358,
+              "school_arrival": "06:29"
+            }
+          ],
+          "diagnostics": {
+            "iterations_completed": 8724
+          }
+        },
+        "all_runs": [
+          {
+            "seed": 101,
+            "runtime_ms": 5000.21,
+            "objective_value": 19.47,
+            "total_distance_km": 7.358,
+            "total_travel_time_min": 17.66,
+            "early_arrival_min": 24.22,
+            "late_arrival_min": 0.0,
+            "time_window_violations": 0,
+            "capacity_violations": 0,
+            "route_duration_violations": 0,
+            "school_arrival_violations": 0,
+            "fleet_violations": 0,
+            "vehicles_used": 1,
+            "is_feasible": true,
+            "routes": [
+              {
+                "station_codes": [
+                  "LOC-12",
+                  "LOC-06",
+                  "LOC-08",
+                  "LOC-04",
+                  "LOC-18",
+                  "LOC-05"
+                ],
+                "passenger_count": 24,
+                "drive_minutes": 17.66,
+                "distance_km": 7.358,
+                "school_arrival": "06:29"
+              }
+            ],
+            "diagnostics": {
+              "iterations_completed": 8724
+            }
+          }
+        ]
+      },
+      "gvns": {
+        "runs": 1,
+        "runtime_ms_mean": 5000.05,
+        "objective_mean": 19.47,
+        "objective_stddev": 0.0,
+        "best_run": {
+          "seed": 101,
+          "runtime_ms": 5000.05,
+          "objective_value": 19.47,
+          "total_distance_km": 7.358,
+          "total_travel_time_min": 17.66,
+          "early_arrival_min": 24.22,
+          "late_arrival_min": 0.0,
+          "time_window_violations": 0,
+          "capacity_violations": 0,
+          "route_duration_violations": 0,
+          "school_arrival_violations": 0,
+          "fleet_violations": 0,
+          "vehicles_used": 1,
+          "is_feasible": true,
+          "routes": [
+            {
+              "station_codes": [
+                "LOC-12",
+                "LOC-06",
+                "LOC-08",
+                "LOC-04",
+                "LOC-18",
+                "LOC-05"
+              ],
+              "passenger_count": 24,
+              "drive_minutes": 17.66,
+              "distance_km": 7.358,
+              "school_arrival": "06:29"
+            }
+          ],
+          "diagnostics": {
+            "iterations_completed": 1594,
+            "evaluations_completed": 150524,
+            "stop_reason": "time_limit",
+            "gvns_diagnostics": {
+              "vnd_neighborhoods": [
+                "2opt",
+                "swap",
+                "relocate"
+              ],
+              "shaking_neighborhoods": [
+                "relocate_1",
+                "swap_1",
+                "relocate_2_3"
+              ],
+              "candidates_per_neighborhood": 120,
+              "shaking_attempts": {
+                "relocate_1": 532,
+                "swap_1": 531,
+                "relocate_2_3": 531
+              },
+              "vnd_candidate_counts": {
+                "2opt": 57609,
+                "swap": 43530,
+                "relocate": 47790
+              },
+              "feasible_candidates_evaluated": 150523,
+              "infeasible_candidates_evaluated": 0,
+              "improving_candidates_found": 4167,
+              "best_distance_by_iteration": [
+                {
+                  "iteration": 0,
+                  "vehicles_used": 1,
+                  "total_distance_km": 8.381
+                },
+                {
+                  "iteration": 1,
+                  "vehicles_used": 1,
+                  "total_distance_km": 7.358
+                }
+              ]
+            }
+          }
+        },
+        "all_runs": [
+          {
+            "seed": 101,
+            "runtime_ms": 5000.05,
+            "objective_value": 19.47,
+            "total_distance_km": 7.358,
+            "total_travel_time_min": 17.66,
+            "early_arrival_min": 24.22,
+            "late_arrival_min": 0.0,
+            "time_window_violations": 0,
+            "capacity_violations": 0,
+            "route_duration_violations": 0,
+            "school_arrival_violations": 0,
+            "fleet_violations": 0,
+            "vehicles_used": 1,
+            "is_feasible": true,
+            "routes": [
+              {
+                "station_codes": [
+                  "LOC-12",
+                  "LOC-06",
+                  "LOC-08",
+                  "LOC-04",
+                  "LOC-18",
+                  "LOC-05"
+                ],
+                "passenger_count": 24,
+                "drive_minutes": 17.66,
+                "distance_km": 7.358,
+                "school_arrival": "06:29"
+              }
+            ],
+            "diagnostics": {
+              "iterations_completed": 1594,
+              "evaluations_completed": 150524,
+              "stop_reason": "time_limit",
+              "gvns_diagnostics": {
+                "vnd_neighborhoods": [
+                  "2opt",
+                  "swap",
+                  "relocate"
+                ],
+                "shaking_neighborhoods": [
+                  "relocate_1",
+                  "swap_1",
+                  "relocate_2_3"
+                ],
+                "candidates_per_neighborhood": 120,
+                "shaking_attempts": {
+                  "relocate_1": 532,
+                  "swap_1": 531,
+                  "relocate_2_3": 531
+                },
+                "vnd_candidate_counts": {
+                  "2opt": 57609,
+                  "swap": 43530,
+                  "relocate": 47790
+                },
+                "feasible_candidates_evaluated": 150523,
+                "infeasible_candidates_evaluated": 0,
+                "improving_candidates_found": 4167,
+                "best_distance_by_iteration": [
+                  {
+                    "iteration": 0,
+                    "vehicles_used": 1,
+                    "total_distance_km": 8.381
+                  },
+                  {
+                    "iteration": 1,
+                    "vehicles_used": 1,
+                    "total_distance_km": 7.358
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
